@@ -1,8 +1,10 @@
+use aya::maps::HashMap;
 use aya::programs::KProbe;
 use aya::{include_bytes_aligned, Bpf};
 use aya_log::BpfLogger;
-use log::{info, warn, debug};
+use log::{debug, info, warn};
 use tokio::signal;
+use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -39,9 +41,24 @@ async fn main() -> Result<(), anyhow::Error> {
     program.load()?;
     program.attach("__x64_sys_execve", 0)?;
 
-    info!("Waiting for Ctrl-C...");
-    signal::ctrl_c().await?;
-    info!("Exiting...");
+    let mapa: HashMap<_, u32, u32> = HashMap::try_from(bpf.map("USERCOUNT").unwrap()).unwrap();
+
+    loop {
+        sleep(std::time::Duration::from_secs(2)).await;
+
+        for item in mapa.iter() {
+            let Ok((k, v)) = item else {
+                println!("Error con item {:?}", item);
+                continue;
+            };
+
+            println!("{k}: {v}");
+        }
+    }
+
+    // info!("Waiting for Ctrl-C...");
+    // signal::ctrl_c().await?;
+    // info!("Exiting...");
 
     Ok(())
 }

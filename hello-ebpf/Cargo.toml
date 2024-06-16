@@ -11,6 +11,8 @@ hello-common = { path = "../hello-common" }
 [[bin]]
 name = "hello"
 path = "src/main.rs"
+test = false
+bench = false
 
 [profile.dev]
 opt-level = 3
