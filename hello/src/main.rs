@@ -1,10 +1,10 @@
-use aya::maps::HashMap;
+use aya::maps::RingBuf;
 use aya::programs::KProbe;
 use aya::{include_bytes_aligned, Bpf};
 use aya_log::BpfLogger;
+use hello_common::Data;
 use log::{debug, info, warn};
-use tokio::signal;
-use tokio::time::sleep;
+use tokio::{io::unix::AsyncFd, signal};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -41,24 +41,27 @@ async fn main() -> Result<(), anyhow::Error> {
     program.load()?;
     program.attach("__x64_sys_execve", 0)?;
 
-    let mapa: HashMap<_, u32, u32> = HashMap::try_from(bpf.map("USERCOUNT").unwrap()).unwrap();
+    let map = bpf.map("OUTPUT").unwrap();
+    let mapa = RingBuf::try_from(map).unwrap();
+    let mut poll = AsyncFd::new(mapa).unwrap();
 
+    println!("OUTPUT: ");
     loop {
-        sleep(std::time::Duration::from_secs(2)).await;
-
-        for item in mapa.iter() {
-            let Ok((k, v)) = item else {
-                println!("Error con item {:?}", item);
+        let mut guard = poll.readable_mut().await.unwrap();
+        let ring = guard.get_inner_mut();
+        while let Some(ref data) = ring.next() {
+            let [data]: &[Data] = unsafe { data.align_to() }.1 else {
                 continue;
             };
 
-            println!("{k}: {v}");
+            println!("{:?}", data);
         }
+        guard.clear_ready();
     }
 
     // info!("Waiting for Ctrl-C...");
     // signal::ctrl_c().await?;
     // info!("Exiting...");
 
-    Ok(())
+    // Ok(())
 }
