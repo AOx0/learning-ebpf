@@ -1,0 +1,19 @@
+[package]
+name = "raw_syscall"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+aya = "0.12"
+aya-log = "0.2"
+raw_syscall-common = { path = "../raw_syscall-common", features = ["user"] }
+anyhow = "1"
+env_logger = "0.10"
+libc = "0.2"
+log = "0.4"
+tokio = { version = "1.25", features = ["full"] }
+
+[[bin]]
+name = "raw_syscall"
+path = "src/main.rs"
