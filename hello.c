@@ -3,6 +3,7 @@
 #include <asm-generic/errno-base.h>
 #include <bpf/libbpf.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -40,9 +41,21 @@ int main() {
         return 1;
     }
 
+    struct bpf_map *conf = skel->maps.my_config;
+
+    unsigned int key = 0;
+    char message[12] = "Hello root ";
+    err = bpf_map__update_elem(conf, &key, sizeof(key), &message, sizeof(message), 0);
+    if (err) {
+        fprintf(stderr, "Fallo en modificarse el mapa: %d\n", err);
+        hello_bpf__destroy(skel);
+        return 1;
+    }
+    
+
     err = hello_bpf__attach(skel);
     if (err) {
-        fprintf(stderr, "Fallo en anclarse el esqueleto: %d\n", err);
+        fprintf(stderr, "Fallo en cargarse al kernel: %d\n", err);
         hello_bpf__destroy(skel);
         return 1;
     }

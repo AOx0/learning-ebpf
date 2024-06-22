@@ -1,3 +1,6 @@
+all: compile-bpf compile-usr 
+    ./hello
+
 gen-vmlinux:
     bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
 
@@ -14,6 +17,7 @@ setcap:
 
 compile-usr: gen-bpftool && setcap
     clang -O2 hello.c -o hello -lbpf
+    # clang -g hello.c -o hello -lbpf
 
 gen-bpftool:
     bpftool gen skeleton hello.bpf.o > hello.skel.h
