@@ -1,0 +1,1 @@
+-D_TARGET_ARCH_x86
