@@ -17,7 +17,7 @@ impl Debug for Data {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "{uid: <6} {pid: <6} msg: \"{msg}\", cmd: \"{cmd}\", path: \"{path}\"",
+            "{uid: <6} {pid: <6} msg: {msg: <11}, cmd: {cmd: <16}, path: {path}",
             uid = self.uid,
             pid = self.pid,
             msg = self.message.as_bstr(),

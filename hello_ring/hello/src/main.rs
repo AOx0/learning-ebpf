@@ -45,7 +45,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let mapa = RingBuf::try_from(map).unwrap();
     let mut poll = AsyncFd::new(mapa).unwrap();
 
-    println!("OUTPUT: ");
     loop {
         let mut guard = poll.readable_mut().await.unwrap();
         let ring = guard.get_inner_mut();
