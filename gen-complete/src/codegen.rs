@@ -40,6 +40,22 @@ impl std::ops::Add<usize> for Position {
     }
 }
 
+impl std::ops::Sub<usize> for Position {
+    type Output = Self;
+
+    fn sub(self, rhs: usize) -> Self::Output {
+        match self {
+            Position::Any => Position::Any,
+            Position::Eq(n) => Position::Eq(n.checked_sub(rhs).unwrap_or_default()),
+            Position::Ne(n) => Position::Ne(n.checked_sub(rhs).unwrap_or_default()),
+            Position::Gt(n) => Position::Gt(n.checked_sub(rhs).unwrap_or_default()),
+            Position::Ge(n) => Position::Ge(n.checked_sub(rhs).unwrap_or_default()),
+            Position::Lt(n) => Position::Lt(n.checked_sub(rhs).unwrap_or_default()),
+            Position::Le(n) => Position::Le(n.checked_sub(rhs).unwrap_or_default()),
+        }
+    }
+}
+
 impl Position {
     fn is_any(&self) -> bool {
         matches!(self, Position::Any)
@@ -176,16 +192,18 @@ pub struct Help<'a> {
 
 impl<'a> Display for Help<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.condition)?;
+        let condition = Condition {
+            token_position: self.condition.token_position - 1,
+          ..self.condition  
+        };
         writeln!(
             f,
-            r#" -s {short} -l {long} -d "{desc}""#,
+            r#"{condition} -s {short} -l {long} -d "{desc}""#,
+            condition = self.condition,
             short = self.help.0,
             long = self.help.1,
-            desc = self.help.2
-        )?;
-
-        Ok(())
+            desc = self.help.2.replace('"', "'")
+        )
     }
 }
 

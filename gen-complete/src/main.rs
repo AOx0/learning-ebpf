@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fmt::Display;
 
 use itertools::Itertools;
@@ -42,19 +43,19 @@ fn main() {
     // We do not want to complete files by default
     res += "\ncomplete -c bpftool -f\n";
 
-    res += sec!("Top level help");
-    for help in constants::TOP_HELP {
-        res += &crate::codegen::Help {
-            condition: crate::codegen::Condition::empty(),
-            help,
-        }
-        .to_string();
-    }
-
-    let mut bpftree = Command {
-        name: "bpftree",
+    let bpftree = Command {
+        name: "bpftool",
         include_in_codegen: false,
         description: "Show BPF object hierarchy",
+        help: vec![
+            ('h', "help", "Print short help message"),
+            ('V', "version", "Print version number, libbpf version, and included optional features.",),
+            ('j', "json", "Generate JSON output."),
+            ('p', "pretty", "Generate human-readable JSON output. Implies -j.",),
+            ('d', "debug", "Print all available logs, even debug-level information.",),
+            ('m', "mapcompat", "Allow loading maps with unknown map definitions.",),
+            ('n', "nomount", "Do not automatically attempt to mount any virtual file system when necessary.",),
+        ].into(),
         children: vec![
             Command::rcd("map", "Inspect and manipulate eBPF maps", vec![
                 Command::rcd("show", "Show information about loaded maps", vec![]),
@@ -79,7 +80,10 @@ fn main() {
                 Command::rcd("show", "Show information about loaded programs", vec![]),
                 Command::rcd("list", "Show information about loaded programs", vec![]),
                 Command::rcd("dump", "Dump eBPF instructions/image of programs", vec![
-                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel", vec![]),
+                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel", vec![])
+                    .with_help(&[
+                        ('a', "Aaaaa", "Mas a")
+                    ]),
                     Command::rcd("jited", "Dump jited image (host machine code) of the program", vec![]),
                 ]),
                 Command::rcd("pin", "Pin program as FILE", vec![]),
@@ -90,7 +94,11 @@ fn main() {
                 Command::rcd("tracelog", "Dump the trace pipe of the system to stdout", vec![]),
                 Command::rcd("run", "Run BPF program in the kernel testing infrastructure", vec![]),
                 Command::rcd("profile", "Profile bpf program", vec![]),
-                Command::rcd("help", "Print short help message", vec![]),
+                Command::rcd("help", "Print short help message", vec![])
+            ])
+            .with_help(&[
+                ('f', "bpffs", "When showing BPF programs, show file names of pinned programs",),
+                ('L', "use-loader", "Load program as a 'loader' program",),
             ]),
             Command::rcd("link", "Inspect and manipulate eBPF links", vec![
                 Command::rcd("show", "Show information about active links", vec![]),
@@ -152,7 +160,7 @@ fn main() {
         ],
         ..Default::default()
     }.to_rc();
-    bpftree.set_children_parents();;
+    bpftree.set_children_parents();
 
     res += &bpftree.generate();
 

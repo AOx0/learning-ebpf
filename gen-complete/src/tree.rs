@@ -10,11 +10,13 @@ pub struct Command {
     pub description: &'static str,
     pub parent: RefCell<Weak<Command>>,
     pub children: Vec<Rc<Command>>,
+    pub help: RefCell<Vec<(char, &'static str, &'static str)>>,
     pub include_in_codegen: bool,
 }
 
 impl Command {
-    pub fn new(name: &'static str, description: &'static str, children: Vec<Rc<Command>>) -> Self {
+    pub fn new(name: &'static str, description: &'static str, children: Vec<Rc<Command>>,
+    ) -> Self {
         Self {
             name,
             description,
@@ -36,6 +38,11 @@ impl Command {
             child.set_parent(self);
             child.set_children_parents();
         }
+    }
+
+    pub fn with_help(self: Rc<Self>, help: &[(char, &'static str, &'static str)]) -> Rc<Self> {
+        self.help.borrow_mut().extend_from_slice(help);
+        self
     }
 
     pub fn set_parent(&self, parent: &Rc<Self>) {
@@ -65,9 +72,7 @@ impl Command {
         let mut curr = self.parent.borrow().upgrade();
 
         while let Some(parent) = curr {
-            if parent.include_in_codegen {
-                level += 1;
-            }
+            level += 1;
             curr = parent.parent.borrow().upgrade();
         }
 
@@ -83,6 +88,7 @@ impl Default for Command {
             children: Vec::new(),
             include_in_codegen: true,
             parent: RefCell::new(Weak::default()),
+            help: RefCell::new(Vec::new()),
         }
     }
 }
@@ -100,6 +106,17 @@ impl From<(&'static str, &'static str)> for Command {
 impl Codegen for Command {
     fn generate(&self) -> String {
         let mut res = String::new();
+        
+        for help in self.help.borrow().iter().copied() {
+            res += &codegen::Help {
+                help,
+                condition: codegen::Condition {
+                    parents: &self.get_parents(),
+                    token_position: codegen::Position::Eq(self.get_level()),
+                    ..Default::default()
+                },
+            }.to_string();
+        }
 
         if self.include_in_codegen {
             res += &codegen::Command {
