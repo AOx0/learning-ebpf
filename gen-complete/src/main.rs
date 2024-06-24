@@ -1,12 +1,12 @@
-use itertools::Itertools;
 use crate::codegen::Codegen;
+use itertools::Itertools;
 
 mod codegen;
 mod constants;
 
 mod tree;
 
-use tree::Command;
+use tree::{Args, Command};
 
 macro_rules! sec {
     ($section:expr) => {
@@ -19,7 +19,7 @@ macro_rules! sec {
 
 fn main() {
     let mut res = String::new();
-    
+
     res += &format!(
         "set -l program_types {}\n",
         constants::PROGRAM_TYPES.iter().map(|v| v.0).join(" ")
@@ -40,6 +40,7 @@ fn main() {
     // We do not want to complete files by default
     res += "\ncomplete -c bpftool -f\n";
 
+    #[rustfmt::skip]
     let bpftree = Command {
         name: "bpftool",
         include_in_codegen: false,
@@ -76,14 +77,12 @@ fn main() {
             ]),
             Command::rcd("prog", "Inspect and manipulate eBPF progs")
             .with_children(&[
-                Command::rcd("show", "Show information about loaded programs"),
+                Command::rcd("show", "Show information about loaded programs")
+                .with_args(&[Args::Prog]),
                 Command::rcd("list", "Show information about loaded programs"),
                 Command::rcd("dump", "Dump eBPF instructions/image of programs")
                 .with_children(&[
-                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel")
-                    .with_flags(&[
-                        ('a', "Aaaaa", "Mas a")
-                    ]),
+                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel"),
                     Command::rcd("jited", "Dump jited image (host machine code) of the program"),
                 ]),
                 Command::rcd("pin", "Pin program as FILE"),

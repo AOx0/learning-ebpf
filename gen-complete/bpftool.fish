@@ -144,10 +144,15 @@ complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpfto
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpftool_count_commands) -eq 2" -ka pin -d "Pin program as FILE"
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpftool_count_commands) -eq 2" -ka dump -d "Dump eBPF instructions/image of programs"
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and test (__fish_bpftool_count_commands) -eq 3" -ka jited -d "Dump jited image (host machine code) of the program"
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and test (__fish_bpftool_count_commands) -eq 3" -s a -l Aaaaa -d "Mas a"
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and test (__fish_bpftool_count_commands) -eq 3" -ka xlated -d "Dump eBPF instructions of the programs from the kernel"
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpftool_count_commands) -eq 2" -ka list -d "Show information about loaded programs"
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpftool_count_commands) -eq 2" -ka show -d "Show information about loaded programs"
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and not __fish_seen_subcommand_from id tag name; and test (__fish_bpftool_count_commands) -eq 3" -a id
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and not __fish_seen_subcommand_from id tag name; and test (__fish_bpftool_count_commands) -eq 3" -a tag
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and not __fish_seen_subcommand_from id tag name; and test (__fish_bpftool_count_commands) -eq 3" -a name
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from id; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_count_keyword id) -eq 1; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_id)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from tag; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_count_keyword tag) -eq 1; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_tag)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from name; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_count_keyword name) -eq 1; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_name)'
 complete -c bpftool -n "test (__fish_bpftool_count_commands) -eq 1" -ka map -d "Inspect and manipulate eBPF maps"
 complete -c bpftool -n "__fish_seen_subcommand_from map; and test (__fish_bpftool_count_commands) -eq 2" -ka help -d "Print short help message"
 complete -c bpftool -n "__fish_seen_subcommand_from map; and test (__fish_bpftool_count_commands) -eq 2" -ka freeze -d "Freeze the map as read-only from user space"
