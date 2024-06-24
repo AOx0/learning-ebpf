@@ -83,3 +83,123 @@ pub const METRIC_TYPES: [(&str, &str); 6] = [
     ("itlb_misses", "Instruction TLB misses"),
     ("dtlb_misses", "Data TLB misses"),
 ];
+
+pub const TOP_COMMANDS: [(&str, &str); 11] = [
+    ("map", "Inspect and manipulate eBPF maps"),
+    ("prog", "Inspect and manipulate eBPF progs"),
+    ("link", "Inspect and manipulate eBPF links"),
+    ("cgroup", "Inspect and manipulate eBPF progs"),
+    ("perf", "Inspect perf related bpf prog attachments"),
+    ("net", "Inspect networking related bpf prog attachments"),
+    (
+        "feature",
+        "Inspect eBPF-related parameters for Linux kernel or net device",
+    ),
+    ("btf", "Inspect BTF data"),
+    ("gen", "BPF code-generation"),
+    (
+        "struct_ops",
+        "Register/unregister/introspect BPF struct_ops",
+    ),
+    ("iter", "Create BPF iterators"),
+];
+
+pub const TOP_HELP: [(char, &str, &str); 7] = [
+    ('h', "help", "Print short help message"),
+    (
+        'V',
+        "version",
+        "Print version number, libbpf version, and included optional features.",
+    ),
+    ('j', "json", "Generate JSON output."),
+    (
+        'p',
+        "pretty",
+        "Generate human-readable JSON output. Implies -j.",
+    ),
+    (
+        'd',
+        "debug",
+        "Print all available logs, even debug-level information.",
+    ),
+    (
+        'm',
+        "mapcompat",
+        "Allow loading maps with unknown map definitions.",
+    ),
+    (
+        'n',
+        "nomount",
+        "Do not automatically attempt to mount any virtual file system when necessary.",
+    ),
+];
+
+pub const PROG_FUNCT: &str = r#"
+function __fish_bpftool_prog_profile_needs_completion
+    set -l cmd (commandline -opc)
+    set -l token (commandline -t)
+    set -l cursor_pos (commandline -C)
+    set -l cmd_str (commandline -c)
+    set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
+
+    if string match -q "*id " "$cmd_before_cursor"
+        or string match -q "*name " "$cmd_before_cursor" 
+        or string match -q "*tag " "$cmd_before_cursor"
+        or string match -q "*pinned " "$cmd_before_cursor"
+        if test -z "$token"; or test (string length "$token") -eq (math $cursor_pos - (string length "$cmd_before_cursor"))
+            return 0
+        end
+    end
+    return 1
+end
+
+function __fish_bpftool_keyword_needs_completion
+    set -l keyword $argv[1]
+    set -l cmd (commandline -opc)
+    set -l token (commandline -t)
+    set -l cursor_pos (commandline -C)
+    set -l cmd_str (commandline -c)
+    set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
+
+    if string match -q "$keyword " "$cmd_before_cursor"
+        if test -z "$token"; or test (string length "$token") -eq (math $cursor_pos - (string length "$cmd_before_cursor"))
+            return 0
+        end
+    end
+    return 1
+end
+
+function __fish_bpftool_count_keyword
+    set -l keyword $argv[1]
+    set -l cmd_str (commandline -c)
+    set -l cursor_pos (commandline -C)
+    set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
+    echo (count (string match -a -- $keyword (string split ' ' "$cmd_before_cursor")))
+end
+
+function __fish_bpftool_count_commands
+    set -l cmd_str (commandline -c)
+    set -l cursor_pos (commandline -C)
+    set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
+    set -l cmd_parts (string split ' ' "$cmd_before_cursor")
+    set -l cmd_count 0
+    for part in $cmd_parts[3..-1] # Start from index 2 to skip the command name (bpftool)
+        if not string match -q -- '-*' $part # Ignore flags (starting with -)
+            set cmd_count (math $cmd_count + 1)
+        end
+    end
+    echo $cmd_count
+end
+
+function __fish_bpftool_complete_progs_id
+    sudo bpftool prog list | rg '^\d+:' | awk -F ' ' '{ print($1 "\'"$4"\'") }' | sed 's/:/\t/g'
+end
+
+function __fish_bpftool_complete_progs_name
+    sudo bpftool prog list | rg 'name ' | awk -F ' ' '{ print($4) }'
+end
+
+function __fish_bpftool_complete_progs_tag
+    sudo bpftool prog list | rg 'tag ' | awk -F ' ' '{ print($6) }'
+end
+"#;
