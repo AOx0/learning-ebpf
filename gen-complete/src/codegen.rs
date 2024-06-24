@@ -1,9 +1,9 @@
-use std::{fmt::Display, ops::Not};
-
 use itertools::Itertools;
+use std::fmt::Display;
+use std::ops::Not;
 
 #[derive(Default)]
-pub(crate) struct Condition<'a> {
+pub struct Condition<'a> {
     pub(crate) parents: &'a [&'a str],
     pub(crate) peers: &'a [(&'a str, &'a str)],
     pub(crate) requires_peers: bool,
@@ -147,5 +147,121 @@ impl<'a> Display for Condition<'a> {
 
             write!(f, r#"""#)
         }
+    }
+}
+
+pub trait Codegen {
+    fn generate(&self) -> String;
+}
+
+pub struct Command<'a> {
+    pub condition: Condition<'a>,
+    pub prog: (&'a str, &'a str),
+}
+
+impl<'a> Display for Command<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.condition)?;
+        writeln!(f, r#" -ka {} -d "{}""#, self.prog.0, self.prog.1)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct Help<'a> {
+    pub condition: Condition<'a>,
+    pub help: (char, &'a str, &'a str),
+}
+
+impl<'a> Display for Help<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.condition)?;
+        writeln!(
+            f,
+            r#" -s {short} -l {long} -d "{desc}""#,
+            short = self.help.0,
+            long = self.help.1,
+            desc = self.help.2
+        )?;
+
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct File<'a> {
+    pub condition: Condition<'a>,
+}
+
+impl<'a> Display for File<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{} -F", self.condition)
+    }
+}
+
+#[derive(Default)]
+pub struct Prog<'a> {
+    pub condition: Condition<'a>,
+    pub allow_repetition: bool,
+    pub position: usize,
+}
+
+impl<'a> Display for Prog<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let selectors = ["id", "tag", "name"];
+        for selector in selectors {
+            write!(
+                f,
+                "{}",
+                Condition {
+                    conflicts: &if self.allow_repetition {
+                        self.condition.conflicts.to_vec()
+                    } else {
+                        self.condition
+                            .conflicts
+                            .iter()
+                            .chain(selectors.iter())
+                            .copied()
+                            .collect_vec()
+                    },
+                    ..self.condition
+                }
+            )?;
+            writeln!(f, " -a {selector}", selector = selector)?;
+        }
+
+        for selector in selectors {
+            write!(
+                f,
+                "{}",
+                Condition {
+                    parents: &self
+                        .condition
+                        .parents
+                        .iter()
+                        .chain([selector].iter())
+                        .copied()
+                        .collect_vec(),
+                    token_position: self.condition.token_position + 1,
+                    extras: &[
+                        "__fish_bpftool_prog_profile_needs_completion",
+                        &format!(
+                            "test (__fish_bpftool_count_keyword {selector}) -eq {position}",
+                            selector = selector,
+                            position = self.position
+                        )
+                    ],
+                    ..self.condition
+                }
+            )?;
+            writeln!(
+                f,
+                " -ka '(__fish_bpftool_complete_progs_{selector})'",
+                selector = selector
+            )?;
+        }
+
+        Ok(())
     }
 }

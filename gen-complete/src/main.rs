@@ -1,11 +1,14 @@
 use std::fmt::Display;
 
 use itertools::Itertools;
+use crate::codegen::Codegen;
 
-mod condition;
+mod codegen;
 mod constants;
 
-use condition::{Condition, Position};
+mod tree;
+
+use tree::Command;
 
 macro_rules! sec {
     ($section:expr) => {
@@ -16,125 +19,9 @@ macro_rules! sec {
     };
 }
 
-struct Command<'a> {
-    pub condition: Condition<'a>,
-    pub prog: (&'a str, &'a str),
-}
-
-impl<'a> Display for Command<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.condition)?;
-        writeln!(f, r#" -ka {} -d "{}""#, self.prog.0, self.prog.1)?;
-
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-struct Help<'a> {
-    pub condition: Condition<'a>,
-    pub help: (char, &'a str, &'a str),
-}
-
-impl<'a> Display for Help<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.condition)?;
-        writeln!(
-            f,
-            r#" -s {short} -l {long} -d "{desc}""#,
-            short = self.help.0,
-            long = self.help.1,
-            desc = self.help.2
-        )?;
-
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-struct File<'a> {
-    pub condition: Condition<'a>,
-}
-
-impl<'a> Display for File<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{} -F", self.condition)
-    }
-}
-
-#[derive(Default)]
-struct Prog<'a> {
-    pub condition: Condition<'a>,
-    pub allow_repetition: bool,
-    pub position: usize,
-}
-
-impl<'a> Display for Prog<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let selectors = ["id", "tag", "name"];
-        for selector in selectors {
-            write!(
-                f,
-                "{}",
-                Condition {
-                    conflicts: &if self.allow_repetition {
-                        self.condition.conflicts.to_vec()
-                    } else {
-                        self.condition
-                            .conflicts
-                            .iter()
-                            .chain(selectors.iter())
-                            .copied()
-                            .collect_vec()
-                    },
-                    ..self.condition
-                }
-            )?;
-            writeln!(f, " -a {selector}", selector = selector)?;
-        }
-
-        for selector in selectors {
-            write!(
-                f,
-                "{}",
-                Condition {
-                    parents: &self
-                        .condition
-                        .parents
-                        .iter()
-                        .chain([selector].iter())
-                        .copied()
-                        .collect_vec(),
-                    token_position: self.condition.token_position + 1,
-                    extras: &[
-                        "__fish_bpftool_prog_profile_needs_completion",
-                        &format!(
-                            "test (__fish_bpftool_count_keyword {selector}) -eq {position}",
-                            selector = selector,
-                            position = self.position
-                        )
-                    ],
-                    ..self.condition
-                }
-            )?;
-            writeln!(
-                f,
-                " -ka '(__fish_bpftool_complete_progs_{selector})'",
-                selector = selector
-            )?;
-        }
-
-        Ok(())
-    }
-}
-
 fn main() {
     let mut res = String::new();
-
-    res += &format!(
-        "set -l commands {}\n",
-        constants::TOP_COMMANDS.iter().map(|v| v.0).join(" ")
-    );
+    
     res += &format!(
         "set -l program_types {}\n",
         constants::PROGRAM_TYPES.iter().map(|v| v.0).join(" ")
@@ -157,169 +44,117 @@ fn main() {
 
     res += sec!("Top level help");
     for help in constants::TOP_HELP {
-        res += &Help {
-            condition: Condition::empty(),
+        res += &crate::codegen::Help {
+            condition: crate::codegen::Condition::empty(),
             help,
         }
         .to_string();
     }
 
-    res += sec!("Top level commands");
-    for prog in constants::TOP_COMMANDS.iter().rev().copied() {
-        res += &Command {
-            condition: Condition {
-                peers: &[("$commands", "")],
-                ..Default::default()
-            },
-            prog,
-        }
-        .to_string();
-    }
+    let mut bpftree = Command {
+        name: "bpftree",
+        include_in_codegen: false,
+        description: "Show BPF object hierarchy",
+        children: vec![
+            Command::rcd("map", "Inspect and manipulate eBPF maps", vec![
+                Command::rcd("show", "Show information about loaded maps", vec![]),
+                Command::rcd("list", "Show information about loaded maps", vec![]),
+                Command::rcd("create", "Create a new map with given parameters", vec![]),
+                Command::rcd("dump", "Dump all entries in a given map", vec![]),
+                Command::rcd("update", "Update map entry for a given key", vec![]),
+                Command::rcd("lookup", "Lookup key in the map", vec![]),
+                Command::rcd("getnext", "Get next key in the map", vec![]),
+                Command::rcd("delete", "Remove entry from the map", vec![]),
+                Command::rcd("pin", "Pin map to a file", vec![]),
+                Command::rcd("event_pipe", "Read events from a perf event array map", vec![]),
+                Command::rcd("peek", "Peek next value in the queue or stack", vec![]),
+                Command::rcd("push", "Push value onto the stack", vec![]),
+                Command::rcd("pop", "Pop and print value from the stack", vec![]),
+                Command::rcd("enqueue", "Enqueue value into the queue", vec![]),
+                Command::rcd("dequeue", "Dequeue and print value from the queue", vec![]),
+                Command::rcd("freeze", "Freeze the map as read-only from user space", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("prog", "Inspect and manipulate eBPF progs", vec![
+                Command::rcd("show", "Show information about loaded programs", vec![]),
+                Command::rcd("list", "Show information about loaded programs", vec![]),
+                Command::rcd("dump", "Dump eBPF instructions/image of programs", vec![
+                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel", vec![]),
+                    Command::rcd("jited", "Dump jited image (host machine code) of the program", vec![]),
+                ]),
+                Command::rcd("pin", "Pin program as FILE", vec![]),
+                Command::rcd("load", "Load bpf program(s) from binary OBJ and pin as PATH", vec![]),
+                Command::rcd("loadall", "Load bpf program(s) from binary OBJ and pin as PATH", vec![]),
+                Command::rcd("attach", "Attach bpf program", vec![]),
+                Command::rcd("detach", "Detach bpf program", vec![]),
+                Command::rcd("tracelog", "Dump the trace pipe of the system to stdout", vec![]),
+                Command::rcd("run", "Run BPF program in the kernel testing infrastructure", vec![]),
+                Command::rcd("profile", "Profile bpf program", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("link", "Inspect and manipulate eBPF links", vec![
+                Command::rcd("show", "Show information about active links", vec![]),
+                Command::rcd("list", "Show information about active links", vec![]),
+                Command::rcd("pin", "Pin link to a file in bpffs", vec![]),
+                Command::rcd("detach", "Force-detach a link", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("cgroup", "Inspect and manipulate eBPF progs in cgroups", vec![
+                Command::rcd("show", "List all programs attached to a specific cgroup", vec![]),
+                Command::rcd("list", "List all programs attached to a specific cgroup", vec![]),
+                Command::rcd("tree", "List attached programs for all cgroups in a hierarchy", vec![]),
+                Command::rcd("attach", "Attach a program to a cgroup", vec![]),
+                Command::rcd("detach", "Detach a program from a cgroup", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("perf", "Inspect perf-related BPF program attachments", vec![
+                Command::rcd("show", "List all raw_tracepoint, tracepoint, and kprobe attachments", vec![]),
+                Command::rcd("list", "List all raw_tracepoint, tracepoint, and kprobe attachments", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("net", "Inspect networking-related BPF program attachments", vec![
+                Command::rcd("show", "List BPF program attachments in the kernel networking subsystem", vec![]),
+                Command::rcd("list", "List BPF program attachments in the kernel networking subsystem", vec![]),
+                Command::rcd("attach", "Attach a BPF program to a network interface", vec![]),
+                Command::rcd("detach", "Detach a BPF program from a network interface", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("feature", "Inspect eBPF-related parameters for Linux kernel or net device", vec![
+                Command::rcd("probe", "Probe and dump eBPF-related parameters", vec![]),
+                Command::rcd("list_builtins", "List items known to bpftool from compilation time", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("btf", "Inspect BTF (BPF Type Format) data", vec![
+                Command::rcd("show", "Show information about loaded BTF objects", vec![]),
+                Command::rcd("list", "List all BTF objects currently loaded on the system", vec![]),
+                Command::rcd("dump", "Dump BTF entries from a given source", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("gen", "BPF code-generation tool", vec![
+                Command::rcd("object", "Statically link BPF ELF object files", vec![]),
+                Command::rcd("skeleton", "Generate BPF skeleton C header file", vec![]),
+                Command::rcd("subskeleton", "Generate BPF subskeleton C header file", vec![]),
+                Command::rcd("min_core_btf", "Generate minimum BTF file for CO-RE relocations", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("struct_ops", "Register/unregister/introspect BPF struct_ops", vec![
+                Command::rcd("show", "Show brief information about struct_ops in the system", vec![]),
+                Command::rcd("list", "List all struct_ops currently existing in the system", vec![]),
+                Command::rcd("dump", "Dump detailed information about struct_ops in the system", vec![]),
+                Command::rcd("register", "Register BPF struct_ops from an object file", vec![]),
+                Command::rcd("unregister", "Unregister a struct_ops from the kernel subsystem", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+            Command::rcd("iter", "Create BPF iterators", vec![
+                Command::rcd("pin", "Create a BPF iterator from an object file and pin it to a path", vec![]),
+                Command::rcd("help", "Print short help message", vec![]),
+            ]),
+        ],
+        ..Default::default()
+    }.to_rc();
+    bpftree.set_children_parents();;
 
-    let bpf_prog_help = [
-        (
-            'f',
-            "bpffs",
-            "When showing BPF programs, show file names of pinned programs",
-        ),
-        ('L', "use-loader", "Load program as a 'loader' program"),
-    ];
-
-    let bpf_prog = [
-        ("show", "Show information about loaded programs"),
-        ("list", "Show information about loaded programs"),
-        ("dump", "Dump eBPF instructions/image of programs"),
-        ("pin", "Pin program as FILE"),
-        (
-            "load",
-            "Load bpf program(s) from binary OBJ and pin as PATH",
-        ),
-        (
-            "loadall",
-            "Load bpf program(s) from binary OBJ and pin as PATH",
-        ),
-        ("attach", "Attach bpf program"),
-        ("detach", "Detach bpf program"),
-        ("tracelog", "Dump the trace pipe of the system to stdout"),
-        (
-            "run",
-            "Run BPF program in the kernel testing infrastructure",
-        ),
-        ("profile", "Profile bpf program"),
-        ("help", "Print short help message"),
-    ];
-
-    res += sec!("bpftool-prog help");
-    for help in bpf_prog_help {
-        res += &Help {
-            condition: Condition {
-                parents: &["prog"],
-                ..Default::default()
-            },
-            help,
-        }
-        .to_string();
-    }
-
-    res += sec!("bpftool-prog");
-    for prog in bpf_prog.iter().rev().copied() {
-        res += &Command {
-            condition: Condition {
-                parents: &["prog"],
-                peers: &bpf_prog,
-                token_position: Position::Eq(1),
-                ..Default::default()
-            },
-            prog,
-        }
-        .to_string();
-    }
-
-    let progs_starting_with_prog: &[&str] =
-        &["pin", "list", "show", "attach", "detach", "run", "profile"];
-
-    for prog in progs_starting_with_prog.iter().copied() {
-        res += &format!("\n\n # bpftool {} PROG\n", prog);
-        res += &Prog {
-            condition: Condition {
-                parents: &["prog", prog],
-                token_position: Position::Eq(2),
-                ..Default::default()
-            },
-            position: 1,
-            ..Default::default()
-        }
-        .to_string();
-    }
-
-    res += sec!("bpftool prog pin PROG FILE");
-    res += &File {
-        condition: Condition {
-            parents: &["prog", "pin"],
-            token_position: Position::Eq(4),
-            ..Default::default()
-        },
-    }
-    .to_string();
-
-    res += sec!("bpftool prog dump { xlated | jitted } [{file FILE | [opcodes] [linum] }]");
-    let prog_dump_kinds = [
-        (
-            "xlated",
-            "Dump eBPF instructions of the programs from the kernel",
-        ),
-        (
-            "jited",
-            "Dump jited image (host machine code) of the program",
-        ),
-    ];
-
-    let prog_dump_keywords = ["file", "opcodes", "linum"];
-
-    for prog in prog_dump_kinds {
-        res += &Command {
-            prog,
-            condition: Condition {
-                parents: &["prog", "dump"],
-                token_position: Position::Eq(2),
-                ..Default::default()
-            },
-        }
-        .to_string();
-
-        res += &Prog {
-            condition: Condition {
-                parents: &["prog", "dump", prog.0],
-                token_position: Position::Eq(3),
-                ..Default::default()
-            },
-            position: 1,
-            ..Default::default()
-        }
-        .to_string();
-
-        for keyword in prog_dump_keywords {
-            res += &Command {
-                prog: (keyword, ""),
-                condition: Condition {
-                    parents: &["prog", "dump", prog.0],
-                    token_position: Position::Gt(4),
-                    ..Default::default()
-                },
-            }
-            .to_string();
-        }
-    }
-
-    res += &Command {
-        prog: ("visual", ""),
-        condition: Condition {
-            parents: &["prog", "dump", "xlated"],
-            token_position: Position::Gt(4),
-            ..Default::default()
-        },
-    }
-    .to_string();
+    res += &bpftree.generate();
 
     std::fs::write("bpftool.fish", res).unwrap();
 }

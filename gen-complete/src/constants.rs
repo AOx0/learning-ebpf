@@ -84,26 +84,6 @@ pub const METRIC_TYPES: [(&str, &str); 6] = [
     ("dtlb_misses", "Data TLB misses"),
 ];
 
-pub const TOP_COMMANDS: [(&str, &str); 11] = [
-    ("map", "Inspect and manipulate eBPF maps"),
-    ("prog", "Inspect and manipulate eBPF progs"),
-    ("link", "Inspect and manipulate eBPF links"),
-    ("cgroup", "Inspect and manipulate eBPF progs"),
-    ("perf", "Inspect perf related bpf prog attachments"),
-    ("net", "Inspect networking related bpf prog attachments"),
-    (
-        "feature",
-        "Inspect eBPF-related parameters for Linux kernel or net device",
-    ),
-    ("btf", "Inspect BTF data"),
-    ("gen", "BPF code-generation"),
-    (
-        "struct_ops",
-        "Register/unregister/introspect BPF struct_ops",
-    ),
-    ("iter", "Create BPF iterators"),
-];
-
 pub const TOP_HELP: [(char, &str, &str); 7] = [
     ('h', "help", "Print short help message"),
     (
