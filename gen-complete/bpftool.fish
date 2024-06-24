@@ -14,7 +14,7 @@ function __fish_bpftool_prog_profile_needs_completion
     set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
 
     if string match -q "*id " "$cmd_before_cursor"
-        or string match -q "*name " "$cmd_before_cursor"
+        or string match -q "*name " "$cmd_before_cursor" 
         or string match -q "*tag " "$cmd_before_cursor"
         or string match -q "*pinned " "$cmd_before_cursor"
         if test -z "$token"; or test (string length "$token") -eq (math $cursor_pos - (string length "$cmd_before_cursor"))

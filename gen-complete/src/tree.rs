@@ -9,39 +9,37 @@ pub struct Command {
     pub name: &'static str,
     pub description: &'static str,
     pub parent: RefCell<Weak<Command>>,
-    pub children: Vec<Rc<Command>>,
-    pub help: RefCell<Vec<(char, &'static str, &'static str)>>,
+    pub children: RefCell<Vec<Rc<Command>>>,
+    pub flags: RefCell<Vec<(char, &'static str, &'static str)>>,
     pub include_in_codegen: bool,
 }
 
 impl Command {
-    pub fn new(name: &'static str, description: &'static str, children: Vec<Rc<Command>>,
-    ) -> Self {
-        Self {
-            name,
-            description,
-            children,
-            ..Default::default()
-        }
-    }
-
     pub fn rcd(
         name: &'static str,
         description: &'static str,
-        children: Vec<Rc<Command>>,
     ) -> Rc<Self> {
-        Rc::new(Self::new(name, description, children))
+        Rc::new(        Self {
+            name,
+            description,
+            ..Default::default()
+        })
     }
 
     pub fn set_children_parents(self: &Rc<Self>) {
-        for child in &self.children {
+        for child in self.children.borrow().iter() {
             child.set_parent(self);
             child.set_children_parents();
         }
     }
 
-    pub fn with_help(self: Rc<Self>, help: &[(char, &'static str, &'static str)]) -> Rc<Self> {
-        self.help.borrow_mut().extend_from_slice(help);
+    pub fn with_flags(self: Rc<Self>, help: &[(char, &'static str, &'static str)]) -> Rc<Self> {
+        self.flags.borrow_mut().extend_from_slice(help);
+        self
+    }
+
+    pub fn with_children(self: Rc<Self>, children: &[Rc<Command>]) -> Rc<Self> {
+        self.children.borrow_mut().extend_from_slice(children);
         self
     }
 
@@ -85,10 +83,10 @@ impl Default for Command {
         Self {
             name: "",
             description: "",
-            children: Vec::new(),
+            children: RefCell::default(),
+            parent: RefCell::default(),
+            flags: RefCell::default(),
             include_in_codegen: true,
-            parent: RefCell::new(Weak::default()),
-            help: RefCell::new(Vec::new()),
         }
     }
 }
@@ -107,7 +105,7 @@ impl Codegen for Command {
     fn generate(&self) -> String {
         let mut res = String::new();
         
-        for help in self.help.borrow().iter().copied() {
+        for help in self.flags.borrow().iter().copied() {
             res += &codegen::Help {
                 help,
                 condition: codegen::Condition {
@@ -130,7 +128,7 @@ impl Codegen for Command {
             .to_string();
         }
 
-        for child in self.children.iter().rev() {
+        for child in self.children.borrow().iter().rev() {
             res += &child.generate();
         }
 
