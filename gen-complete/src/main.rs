@@ -78,7 +78,19 @@ fn main() {
             Command::rcd("prog", "Inspect and manipulate eBPF progs")
             .with_children(&[
                 Command::rcd("show", "Show information about loaded programs")
-                .with_args(&[Args::Prog]),
+                .with_args(&[
+                    Args::Prog,
+                    Args::OneOf(vec![ 
+                        Args::Lit("map"),
+                        Args::Lit("mapa"),
+                    ]), 
+                    Args::OneOf(vec![ 
+                        Args::Prog,
+                        Args::Map
+                    ]), 
+                    Args::Map
+                ]
+                ),
                 Command::rcd("list", "Show information about loaded programs"),
                 Command::rcd("dump", "Dump eBPF instructions/image of programs")
                 .with_children(&[

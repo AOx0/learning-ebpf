@@ -194,7 +194,7 @@ impl<'a> Display for Help<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let condition = Condition {
             token_position: self.condition.token_position - 1,
-          ..self.condition  
+            ..self.condition
         };
         writeln!(
             f,
@@ -222,12 +222,17 @@ impl<'a> Display for File<'a> {
 pub struct Prog<'a> {
     pub condition: Condition<'a>,
     pub allow_repetition: bool,
-    pub position: usize,
 }
 
-impl<'a> Display for Prog<'a> {
+#[derive(Default)]
+pub struct Map<'a> {
+    pub condition: Condition<'a>,
+    pub allow_repetition: bool,
+}
+
+impl<'a> Display for Map<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let selectors = ["id", "tag", "name"];
+        let selectors = ["id" /* "pinned" */];
         for selector in selectors {
             write!(
                 f,
@@ -265,9 +270,66 @@ impl<'a> Display for Prog<'a> {
                     extras: &[
                         "__fish_bpftool_prog_profile_needs_completion",
                         &format!(
-                            "test (__fish_bpftool_count_keyword {selector}) -eq {position}",
+                            "test (__fish_bpftool_get_last_token) = '{selector}'",
                             selector = selector,
-                            position = self.position
+                        )
+                    ],
+                    ..self.condition
+                }
+            )?;
+            writeln!(
+                f,
+                " -ka '(__fish_bpftool_complete_map_{selector})'",
+                selector = selector
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> Display for Prog<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let selectors = ["id", "tag", "name" /* "pinned" */];
+        for selector in selectors {
+            write!(
+                f,
+                "{}",
+                Condition {
+                    conflicts: &if self.allow_repetition {
+                        self.condition.conflicts.to_vec()
+                    } else {
+                        self.condition
+                            .conflicts
+                            .iter()
+                            .chain(selectors.iter())
+                            .copied()
+                            .collect_vec()
+                    },
+                    ..self.condition
+                }
+            )?;
+            writeln!(f, " -a {selector}", selector = selector)?;
+        }
+
+        for selector in selectors {
+            write!(
+                f,
+                "{}",
+                Condition {
+                    parents: &self
+                        .condition
+                        .parents
+                        .iter()
+                        .chain([selector].iter())
+                        .copied()
+                        .collect_vec(),
+                    token_position: self.condition.token_position + 1,
+                    extras: &[
+                        "__fish_bpftool_prog_profile_needs_completion",
+                        &format!(
+                            "test (__fish_bpftool_get_last_token) = '{selector}'",
+                            selector = selector,
                         )
                     ],
                     ..self.condition

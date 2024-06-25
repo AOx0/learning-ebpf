@@ -127,10 +127,24 @@ function __fish_bpftool_count_keyword
     echo (count (string match -a -- $keyword (string split ' ' "$cmd_before_cursor")))
 end
 
+function __fish_bpftool_get_last_token
+    set -l cmd_str (commandline -c)
+    set -l cursor_pos (commandline -C)
+    set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
+    set cmd_before_cursor (string replace -r ' {2,}' ' ' "$cmd_before_cursor")
+    set cmd_before_cursor (string trim "$cmd_before_cursor")
+    set -l cmd_parts (string split ' ' "$cmd_before_cursor")
+
+    echo $cmd_parts[-1]
+end
+
 function __fish_bpftool_count_commands
     set -l cmd_str (commandline -c)
     set -l cursor_pos (commandline -C)
     set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
+    set cmd_before_cursor (string replace -r ' {2,}' ' ' "$cmd_before_cursor")
+    # The last space does need to be counted
+    # set cmd_before_cursor (string trim "$cmd_before_cursor")
     set -l cmd_parts (string split ' ' "$cmd_before_cursor")
     set -l cmd_count 0
     for part in $cmd_parts[2..-1] # Start from index 2 to skip the command name (bpftool)
@@ -139,6 +153,10 @@ function __fish_bpftool_count_commands
         end
     end
     echo $cmd_count
+end
+
+function __fish_bpftool_complete_map_id
+    sudo bpftool map list | rg '^\d+:' | awk -F ' ' '{ print($1 "\'"$4"\'") }' | sed 's/:/\t/g'
 end
 
 function __fish_bpftool_complete_progs_id

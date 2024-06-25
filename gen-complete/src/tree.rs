@@ -2,7 +2,7 @@ use crate::codegen;
 use crate::codegen::Codegen;
 use itertools::Itertools;
 use std::borrow::{Borrow, BorrowMut};
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::{Rc, Weak};
 
@@ -18,6 +18,14 @@ impl ArgInfo {
             parent,
             ..Default::default()
         }
+    }
+
+    fn get_parent_mut(&self) -> RefMut<'_, Weak<Command>> {
+        self.parent.borrow_mut()
+    }
+
+    fn get_parent(&self) -> Rc<Command> {
+        self.parent.borrow().upgrade().unwrap()
     }
 }
 
@@ -94,7 +102,7 @@ impl Codegen for AArgs {
         match self {
             AArgs::Lit(info, lit) => codegen::Command {
                 condition: codegen::Condition {
-                    parents: &info.parent.borrow().upgrade().unwrap().get_parents(),
+                    parents: &info.get_parent().get_parents_with_self(),
                     token_position: *info.fixed_position.borrow(),
 
                     ..Default::default()
@@ -104,20 +112,35 @@ impl Codegen for AArgs {
             .to_string(),
             AArgs::Prog(info) => codegen::Prog {
                 condition: codegen::Condition {
-                    parents: &info.parent.borrow().upgrade().unwrap().get_parents(),
+                    parents: &info.get_parent().get_parents_with_self(),
                     token_position: *info.fixed_position.borrow(),
-
                     ..Default::default()
                 },
-                position: 1,
-                ..Default::default()
+                allow_repetition: true,
             }
             .to_string(),
-            AArgs::Map(_) => todo!(),
+            AArgs::Map(info) => codegen::Map {
+                condition: codegen::Condition {
+                    parents: &info.get_parent().get_parents_with_self(),
+                    token_position: *info.fixed_position.borrow(),
+                    ..Default::default()
+                },
+                allow_repetition: true,
+            }
+            .to_string(),
             AArgs::Path(_) => todo!(),
             AArgs::PathO(_) => todo!(),
             AArgs::Event(_, _, _) => todo!(),
-            AArgs::OneOf(_, _) => todo!(),
+            AArgs::OneOf(info, variants) => {
+                let mut res = String::new();
+                for variant in variants {
+                    let var_info = variant.get_info();
+                    *var_info.fixed_position.borrow_mut() = *info.fixed_position.borrow();
+                    res += &variant.generate();
+                }
+
+                res
+            }
             AArgs::Sequential(info, seq) => {
                 let mut res = String::new();
                 let mut contador = info.parent.borrow().upgrade().unwrap().get_level() + 1;
@@ -215,6 +238,20 @@ impl Command {
 
     pub fn get_parents(&self) -> Vec<&'static str> {
         let mut parents = VecDeque::new();
+        let mut curr = self.parent.borrow().upgrade();
+
+        while let Some(parent) = curr {
+            if parent.include_in_codegen {
+                parents.push_front(parent.name);
+            }
+            curr = parent.parent.borrow().upgrade();
+        }
+
+        parents.into_iter().collect_vec()
+    }
+
+    pub fn get_parents_with_self(&self) -> Vec<&'static str> {
+        let mut parents = VecDeque::from_iter([self.name]);
         let mut curr = self.parent.borrow().upgrade();
 
         while let Some(parent) = curr {
