@@ -155,6 +155,21 @@ function __fish_bpftool_count_commands
     echo $cmd_count
 end
 
+function __fish_bpftool_complete_file_from_root
+    set start -l '/sys/kernel'
+    set ct -l (commandline -ct)
+    set ct (string trim $ct)
+
+    if test -n "$ct"
+        set start "$ct"
+    end
+    complete -C"\'\' $start" | string match -re "(?:/|.bar)\$"
+end
+
+function __fish_bpftool_complete_file
+    complete -C"\'\' $(commandline -ct)" | string match -re "(?:/|.o)\$"
+end
+
 function __fish_bpftool_complete_map_id
     sudo bpftool map list | rg '^\d+:' | awk -F ' ' '{ print($1 "\'"$4"\'") }' | sed 's/:/\t/g'
 end

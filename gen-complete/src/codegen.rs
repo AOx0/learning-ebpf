@@ -24,6 +24,20 @@ pub enum Position {
     Le(usize),
 }
 
+impl Position {
+    pub fn get_value(&self) -> Option<usize> {
+        match *self {
+            Position::Any => None,
+            Position::Eq(v) => Some(v),
+            Position::Ne(v) => Some(v),
+            Position::Gt(v) => Some(v),
+            Position::Ge(v) => Some(v),
+            Position::Lt(v) => Some(v),
+            Position::Le(v) => Some(v),
+        }
+    }
+}
+
 impl std::ops::Add<usize> for Position {
     type Output = Self;
 
@@ -221,36 +235,39 @@ impl<'a> Display for File<'a> {
 #[derive(Default)]
 pub struct Prog<'a> {
     pub condition: Condition<'a>,
-    pub allow_repetition: bool,
 }
 
 #[derive(Default)]
 pub struct Map<'a> {
     pub condition: Condition<'a>,
-    pub allow_repetition: bool,
+}
+
+#[derive(Default)]
+pub struct Path<'a> {
+    pub condition: Condition<'a>,
+}
+
+impl<'a> Display for Path<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            Condition {
+                extras: &["not __fish_should_complete_switches",],
+                ..self.condition
+            }
+        )?;
+        writeln!(f, " -f -a '(__fish_bpftool_complete_file)'",)?;
+
+        Ok(())
+    }
 }
 
 impl<'a> Display for Map<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let selectors = ["id" /* "pinned" */];
         for selector in selectors {
-            write!(
-                f,
-                "{}",
-                Condition {
-                    conflicts: &if self.allow_repetition {
-                        self.condition.conflicts.to_vec()
-                    } else {
-                        self.condition
-                            .conflicts
-                            .iter()
-                            .chain(selectors.iter())
-                            .copied()
-                            .collect_vec()
-                    },
-                    ..self.condition
-                }
-            )?;
+            write!(f, "{}", Condition { ..self.condition })?;
             writeln!(f, " -a {selector}", selector = selector)?;
         }
 
@@ -292,23 +309,7 @@ impl<'a> Display for Prog<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let selectors = ["id", "tag", "name" /* "pinned" */];
         for selector in selectors {
-            write!(
-                f,
-                "{}",
-                Condition {
-                    conflicts: &if self.allow_repetition {
-                        self.condition.conflicts.to_vec()
-                    } else {
-                        self.condition
-                            .conflicts
-                            .iter()
-                            .chain(selectors.iter())
-                            .copied()
-                            .collect_vec()
-                    },
-                    ..self.condition
-                }
-            )?;
+            write!(f, "{}", Condition { ..self.condition })?;
             writeln!(f, " -a {selector}", selector = selector)?;
         }
 

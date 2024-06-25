@@ -64,6 +64,7 @@ function __fish_bpftool_count_commands
     set -l cursor_pos (commandline -C)
     set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
     set cmd_before_cursor (string replace -r ' {2,}' ' ' "$cmd_before_cursor")
+    # The last space does need to be counted
     # set cmd_before_cursor (string trim "$cmd_before_cursor")
     set -l cmd_parts (string split ' ' "$cmd_before_cursor")
     set -l cmd_count 0
@@ -73,6 +74,21 @@ function __fish_bpftool_count_commands
         end
     end
     echo $cmd_count
+end
+
+function __fish_bpftool_complete_file_from_root
+    set start -l '/sys/kernel'
+    set ct -l (commandline -ct)
+    set ct (string trim $ct)
+
+    if test -n "$ct"
+        set start "$ct"
+    end
+    complete -C"\'\' $start" | string match -re "(?:/|.bar)\$"
+end
+
+function __fish_bpftool_complete_file
+    complete -C"\'\' $(commandline -ct)" | string match -re "(?:/|.o)\$"
 end
 
 function __fish_bpftool_complete_map_id
@@ -161,8 +177,35 @@ complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpfto
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpftool_count_commands) -eq 2" -ka pin -d "Pin program as FILE"
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpftool_count_commands) -eq 2" -ka dump -d "Dump eBPF instructions/image of programs"
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and test (__fish_bpftool_count_commands) -eq 3" -ka jited -d "Dump jited image (host machine code) of the program"
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and test (__fish_bpftool_count_commands) -eq 4" -a id
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and test (__fish_bpftool_count_commands) -eq 4" -a tag
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and test (__fish_bpftool_count_commands) -eq 4" -a name
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and __fish_seen_subcommand_from id; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'id'; and test (__fish_bpftool_count_commands) -eq 5" -ka '(__fish_bpftool_complete_progs_id)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and __fish_seen_subcommand_from tag; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'tag'; and test (__fish_bpftool_count_commands) -eq 5" -ka '(__fish_bpftool_complete_progs_tag)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and __fish_seen_subcommand_from name; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'name'; and test (__fish_bpftool_count_commands) -eq 5" -ka '(__fish_bpftool_complete_progs_name)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and test (__fish_bpftool_count_commands) -eq 6" -ka opcodes -d ""
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and test (__fish_bpftool_count_commands) -eq 6" -ka linum -d ""
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and test (__fish_bpftool_count_commands) -eq 6" -ka file -d ""
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and test (__fish_bpftool_count_commands) -eq 6" -ka visual -d ""
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from jited; and not __fish_should_complete_switches; and test (__fish_bpftool_count_commands) -eq 7" -f -a '(__fish_bpftool_complete_file)'
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and test (__fish_bpftool_count_commands) -eq 3" -ka xlated -d "Dump eBPF instructions of the programs from the kernel"
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and test (__fish_bpftool_count_commands) -eq 4" -a id
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and test (__fish_bpftool_count_commands) -eq 4" -a tag
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and test (__fish_bpftool_count_commands) -eq 4" -a name
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and __fish_seen_subcommand_from id; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'id'; and test (__fish_bpftool_count_commands) -eq 5" -ka '(__fish_bpftool_complete_progs_id)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and __fish_seen_subcommand_from tag; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'tag'; and test (__fish_bpftool_count_commands) -eq 5" -ka '(__fish_bpftool_complete_progs_tag)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and __fish_seen_subcommand_from name; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'name'; and test (__fish_bpftool_count_commands) -eq 5" -ka '(__fish_bpftool_complete_progs_name)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and test (__fish_bpftool_count_commands) -eq 6" -ka opcodes -d ""
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and test (__fish_bpftool_count_commands) -eq 6" -ka linum -d ""
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and test (__fish_bpftool_count_commands) -eq 6" -ka file -d ""
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from dump; and __fish_seen_subcommand_from xlated; and test (__fish_bpftool_count_commands) -eq 6" -ka visual -d ""
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpftool_count_commands) -eq 2" -ka list -d "Show information about loaded programs"
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from list; and test (__fish_bpftool_count_commands) -eq 3" -a id
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from list; and test (__fish_bpftool_count_commands) -eq 3" -a tag
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from list; and test (__fish_bpftool_count_commands) -eq 3" -a name
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from list; and __fish_seen_subcommand_from id; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'id'; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_id)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from list; and __fish_seen_subcommand_from tag; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'tag'; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_tag)'
+complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from list; and __fish_seen_subcommand_from name; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'name'; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_name)'
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and test (__fish_bpftool_count_commands) -eq 2" -ka show -d "Show information about loaded programs"
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 3" -a id
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 3" -a tag
@@ -170,18 +213,6 @@ complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcom
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and __fish_seen_subcommand_from id; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'id'; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_id)'
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and __fish_seen_subcommand_from tag; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'tag'; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_tag)'
 complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and __fish_seen_subcommand_from name; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'name'; and test (__fish_bpftool_count_commands) -eq 4" -ka '(__fish_bpftool_complete_progs_name)'
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 5" -ka map -d ""
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 5" -ka mapa -d ""
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 6" -a id
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 6" -a tag
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 6" -a name
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and __fish_seen_subcommand_from id; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'id'; and test (__fish_bpftool_count_commands) -eq 7" -ka '(__fish_bpftool_complete_progs_id)'
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and __fish_seen_subcommand_from tag; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'tag'; and test (__fish_bpftool_count_commands) -eq 7" -ka '(__fish_bpftool_complete_progs_tag)'
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and __fish_seen_subcommand_from name; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'name'; and test (__fish_bpftool_count_commands) -eq 7" -ka '(__fish_bpftool_complete_progs_name)'
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 6" -a id
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and __fish_seen_subcommand_from id; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'id'; and test (__fish_bpftool_count_commands) -eq 7" -ka '(__fish_bpftool_complete_map_id)'
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and test (__fish_bpftool_count_commands) -eq 8" -a id
-complete -c bpftool -n "__fish_seen_subcommand_from prog; and __fish_seen_subcommand_from show; and __fish_seen_subcommand_from id; and __fish_bpftool_prog_profile_needs_completion; and test (__fish_bpftool_get_last_token) = 'id'; and test (__fish_bpftool_count_commands) -eq 9" -ka '(__fish_bpftool_complete_map_id)'
 complete -c bpftool -n "test (__fish_bpftool_count_commands) -eq 1" -ka map -d "Inspect and manipulate eBPF maps"
 complete -c bpftool -n "__fish_seen_subcommand_from map; and test (__fish_bpftool_count_commands) -eq 2" -ka help -d "Print short help message"
 complete -c bpftool -n "__fish_seen_subcommand_from map; and test (__fish_bpftool_count_commands) -eq 2" -ka freeze -d "Freeze the map as read-only from user space"

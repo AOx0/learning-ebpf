@@ -78,24 +78,32 @@ fn main() {
             Command::rcd("prog", "Inspect and manipulate eBPF progs")
             .with_children(&[
                 Command::rcd("show", "Show information about loaded programs")
-                .with_args(&[
-                    Args::Prog,
-                    Args::OneOf(vec![ 
-                        Args::Lit("map"),
-                        Args::Lit("mapa"),
-                    ]), 
-                    Args::OneOf(vec![ 
-                        Args::Prog,
-                        Args::Map
-                    ]), 
-                    Args::Map
-                ]
-                ),
-                Command::rcd("list", "Show information about loaded programs"),
+                    .with_args(&[ Args::Prog, ]),
+                Command::rcd("list", "Show information about loaded programs")
+                    .with_args(&[ Args::Prog, ]),
                 Command::rcd("dump", "Dump eBPF instructions/image of programs")
                 .with_children(&[
-                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel"),
-                    Command::rcd("jited", "Dump jited image (host machine code) of the program"),
+                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel")
+                        .with_args(&[ 
+                            Args::Prog, 
+                            Args::OneOf(vec![
+                                Args::Lit("opcodes"), 
+                                Args::Lit("linum"),
+                                Args::Lit("file"),
+                                Args::Lit("visual")
+                            ])
+                        ]),
+                    Command::rcd("jited", "Dump jited image (host machine code) of the program")
+                        .with_args(&[ 
+                            Args::Prog, 
+                            Args::OneOf(vec![
+                                Args::Lit("opcodes"), 
+                                Args::Lit("linum"),
+                                Args::Lit("file"),
+                                Args::Lit("visual")
+                            ]),
+                            Args::Path,
+                        ]),
                 ]),
                 Command::rcd("pin", "Pin program as FILE"),
                 Command::rcd("load", "Load bpf program(s) from binary OBJ and pin as PATH"),
@@ -181,6 +189,7 @@ fn main() {
         ..Default::default()
     }.to_rc();
     bpftree.set_children_parents();
+    bpftree.setup_args();
 
     res += &bpftree.generate();
 
