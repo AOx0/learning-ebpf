@@ -245,6 +245,8 @@ pub struct Map<'a> {
 #[derive(Default)]
 pub struct Path<'a> {
     pub condition: Condition<'a>,
+    pub extensions: &'a [&'static str],
+    pub source: Option<&'a str>,
 }
 
 impl<'a> Display for Path<'a> {
@@ -257,7 +259,21 @@ impl<'a> Display for Path<'a> {
                 ..self.condition
             }
         )?;
-        writeln!(f, " -f -a '(__fish_bpftool_complete_file)'",)?;
+
+        writeln!(
+            f,
+            " -f -x -a \"(__fish_bpftool_complete_file {source} {filter})\"",
+            source = self
+                .source
+                .map(|s| format!("--source='{s}'"))
+                .unwrap_or_default(),
+            filter = self
+                .extensions
+                .is_empty()
+                .not()
+                .then(|| format!("--filters='|{}'", &self.extensions.join("|")))
+                .unwrap_or_default()
+        )?;
 
         Ok(())
     }

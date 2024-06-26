@@ -84,31 +84,102 @@ fn main() {
                 Command::rcd("dump", "Dump eBPF instructions/image of programs")
                 .with_children(&[
                     Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel")
-                        .with_args(&[ 
-                            Args::Prog, 
-                            Args::OneOf(vec![
-                                Args::Lit("opcodes"), 
-                                Args::Lit("linum"),
-                                Args::Lit("file"),
-                                Args::Lit("visual")
-                            ])
+                    .with_args(&[ 
+                        Args::Prog, 
+                        Args::OneOf(vec![
+                            Args::DLit("opcodes", "Display raw codes"),
+                            Args::DLit("file", "Dump eBPF instructions of the programs from the kernel"),
+                            Args::DLit("linum", "Display filename, line number and column"),
+                            Args::DLit("visual", "Display eBPF instructions with CFG in DOT format")
                         ]),
+                        Args::Path
+                    ]),
                     Command::rcd("jited", "Dump jited image (host machine code) of the program")
-                        .with_args(&[ 
-                            Args::Prog, 
-                            Args::OneOf(vec![
-                                Args::Lit("opcodes"), 
-                                Args::Lit("linum"),
-                                Args::Lit("file"),
-                                Args::Lit("visual")
-                            ]),
-                            Args::Path,
+                    .with_args(&[ 
+                        Args::Prog, 
+                        Args::OneOf(vec![
+                            Args::DLit("opcodes", "Display raw codes"),
+                            Args::DLit("file", "Dump eBPF instructions of the programs from the kernel"),
+                            Args::DLit("linum", "Display filename, line number and column"),
+                            Args::DLit("visual", "Display eBPF instructions with CFG in DOT format")
                         ]),
+                        Args::Path
+                    ]),
                 ]),
-                Command::rcd("pin", "Pin program as FILE"),
-                Command::rcd("load", "Load bpf program(s) from binary OBJ and pin as PATH"),
-                Command::rcd("loadall", "Load bpf program(s) from binary OBJ and pin as PATH"),
-                Command::rcd("attach", "Attach bpf program"),
+                Command::rcd("pin", "Pin program as a FILE")
+                .with_args(&[ 
+                    Args::Prog,
+                    Args::PathBpffs
+                ]),
+                Command::rcd("load", " Pins only the first program from the OBJ as PATH.Note: PATH must be located in bpffs mount. It must not contain a dot character ('.'), which is reserved for future extensions of bpffs.")
+                .with_args(&[ 
+                    Args::PathO 
+                ]),
+                Command::rcd("loadall", "Pins all programs from the OBJ under PATH directory.Note: PATH must be located in bpffs mount. It must not contain a dot character ('.'), which is reserved for future extensions of bpffs.")
+                .with_children(&[
+                    Command::rcd("type", "OJO Armar la lista al vuelo. if not specified program type will be inferred from section names. ")
+                    .with_args(&[ 
+                        Args::OneOf(vec![
+                        Args::Lit("socket"), Args::Lit("kprobe"),
+                        Args::Lit("kretprobe"),Args::Lit("classifier"), 
+                        Args::Lit("action"), Args::Lit("tracepoint"), 
+                        Args::Lit("raw_tracepoint"), Args::Lit("xdp"), 
+                        Args::Lit("perf_event"), Args::Lit("cgroup/skb"), 
+                        Args::Lit("cgroup/sock"), Args::Lit("cgroup/dev"), 
+                        Args::Lit("lwt_in"), Args::Lit("lwt_out "),
+                        Args::Lit("lwt_xmit "), Args::Lit("lwt_seg6local"),
+                        Args::Lit("sockops"), Args::Lit("sk_skb"), 
+                        Args::Lit("sk_msg"), Args::Lit("lirc_mode2"),
+                        Args::Lit("cgroup/bind4"), Args::Lit("cgroup/bind6"),
+                        Args::Lit("cgroup/post_bind4"), Args::Lit("cgroup/post_bind6"),
+                        Args::Lit("cgroup/connect4"), Args::Lit("cgroup/connect6"),
+                        Args::Lit("cgroup/connect_unix"), Args::Lit("cgroup/getpeername4"),
+                        Args::Lit("cgroup/getpeername6"), Args::Lit("cgroup/getpeername_unix"),
+                        Args::Lit("cgroup/getsockname4"), Args::Lit("cgroup/getsockname6"),
+                        Args::Lit("cgroup/getsockname_unix"), Args::Lit("cgroup/sendmsg4"),
+                        Args::Lit("cgroup/sendmsg6"), Args::Lit("cgroup/sendmsg_unix"),
+                        Args::Lit("cgroup/recvmsg4"), Args::Lit("cgroup/recvmsg6"), 
+                        Args::Lit("cgroup/recvmsg_unix"), Args::Lit("cgroup/sysctl"),
+                        Args::Lit("cgroup/getsockopt"), Args::Lit("cgroup/setsockopt"),
+                        Args::Lit("cgroup/sock_release"), Args::Lit("struct_ops"),
+                        Args::Lit("fentry"), Args::Lit("fexit"),
+                        Args::Lit("freplace"), Args::Lit("sk_lookup")
+                      ])
+                    ]),
+                    Command::rcd("map", " By default bpftool will create new maps as declared in the ELF object being loaded. Allows for the reuse of existing maps. It can be specified multiple times, each time for a different map.")
+                    .with_children(&[
+                        Command::rcd("idx", "Refers to index of the map to be replaced in the ELF file counting from 0"),
+                        Command::rcd("name", "Allows to replace a map by name. MAP specifies the map to use, referring to it by id or through a pinned file.")
+                    ])
+                    .with_args(&[ Args::Lit("OJOULTIPLE"), Args::Prog ]),
+                    Command::rcd("name", "if not specified program type will be inferred from section names. By default bpftool will create new maps as declared in the ELF object being loaded.")
+                    .with_children(&[
+                        Command::rcd("offload_dev", "Program will be loaded onto given networking device (offload)."),
+                        Command::rcd("xdpmeta_dev", "Program will become device-bound without offloading, this facilitates access to XDP metadata.")
+                    ])
+                    .with_args(&[ Args::Lit("Objectfilename"), Args::Prog 
+                    ]),
+                    Command::rcd("Pinmaps", "Can be provided to pin all maps under MAP_DIR directory. ")
+                    .with_args(&[ Args::Lit("MAPDirectory"), Args::Path 
+                    ]),
+                    Command::rcd("autoattach", "The program will be attached before pin. In that case, only the link (representing the program attached to its hook) is pinned, not the program as such, so the path won't show in bpftool prog show -f, only show in bpftool link show -f. ")
+                ])
+                .with_args(&[ 
+                    Args::PathO
+                ]),
+                Command::rcd("attach", "Attach bpf program PROG (with type specified by ATTACH_TYPE).")
+                .with_children(&[
+                    Command::rcd("sk_msg_verdict", "."),
+                    Command::rcd("sk_skb_verdict", ".")
+                        .with_args(&[ Args::Map ]),              
+                    Command::rcd("sk_skb_stream_verdict", "."),
+                    Command::rcd("sk_skb_stream_parser", ".")
+                        .with_args(&[ Args::Map ]),              
+                    Command::rcd("flow_dissector", ".")
+                        .with_args(&[ Args::Map ])              
+                ])
+                .with_args(&[ Args::Prog               
+                ]),
                 Command::rcd("detach", "Detach bpf program"),
                 Command::rcd("tracelog", "Dump the trace pipe of the system to stdout"),
                 Command::rcd("run", "Run BPF program in the kernel testing infrastructure"),

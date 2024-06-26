@@ -32,10 +32,12 @@ impl ArgInfo {
 pub enum Args {
     // Repeatable(Rc<Arg>),
     Lit(&'static str),
+    DLit(&'static str, &'static str),
     Prog,
     Map,
     Path,
-    Path_o,
+    PathO,
+    PathBpffs,
     Event(&'static str, &'static str),
     OneOf(Vec<Args>),
     Sequential(Vec<Args>),
@@ -48,7 +50,8 @@ impl AArgs {
             Args::Prog => AArgs::Prog(ArgInfo::new(parent)),
             Args::Map => AArgs::Map(ArgInfo::new(parent)),
             Args::Path => AArgs::Path(ArgInfo::new(parent)),
-            Args::Path_o => AArgs::PathO(ArgInfo::new(parent)),
+            Args::PathO => AArgs::PathO(ArgInfo::new(parent)),
+            Args::PathBpffs => AArgs::PathBpffs(ArgInfo::new(parent)),
             Args::Event(name, fun) => AArgs::Event(ArgInfo::new(parent), name, fun),
             Args::OneOf(variants) => {
                 let variants = variants
@@ -64,6 +67,7 @@ impl AArgs {
                     .collect_vec();
                 AArgs::Sequential(ArgInfo::new(parent), seq)
             }
+            Args::DLit(lit, docs) => AArgs::DLit(ArgInfo::new(parent), lit, docs),
         }
     }
 }
@@ -72,9 +76,11 @@ impl AArgs {
 pub enum AArgs {
     Repeatable(ArgInfo, Rc<AArgs>),
     Lit(ArgInfo, &'static str),
+    DLit(ArgInfo, &'static str, &'static str),
     Prog(ArgInfo),
     Map(ArgInfo),
     Path(ArgInfo),
+    PathBpffs(ArgInfo),
     PathO(ArgInfo),
     Event(ArgInfo, &'static str, &'static str),
     OneOf(ArgInfo, Vec<AArgs>),
@@ -93,6 +99,8 @@ impl AArgs {
             AArgs::OneOf(info, _) => info,
             AArgs::Sequential(info, _) => info,
             AArgs::Repeatable(info, _) => info,
+            AArgs::DLit(info, _, _) => info,
+            AArgs::PathBpffs(info) => info,
         }
     }
 }
@@ -132,9 +140,29 @@ impl Codegen for AArgs {
                     token_position: info.get_position(),
                     ..Default::default()
                 },
+                ..Default::default()
             }
             .to_string(),
-            AArgs::PathO(_) => todo!(),
+            AArgs::PathO(info) => codegen::Path {
+                condition: codegen::Condition {
+                    parents: &info.get_parent().get_parents_with_self(),
+                    token_position: info.get_position(),
+                    ..Default::default()
+                },
+                extensions: &["\\.o"],
+                ..Default::default()
+            }
+            .to_string(),
+            AArgs::PathBpffs(info) => codegen::Path {
+                condition: codegen::Condition {
+                    parents: &info.get_parent().get_parents_with_self(),
+                    token_position: info.get_position(),
+                    ..Default::default()
+                },
+                source: Some("/sys/fs/bpf/"),
+                ..Default::default()
+            }
+            .to_string(),
             AArgs::Event(_, _, _) => todo!(),
             AArgs::OneOf(info, variants) => {
                 let mut res = String::new();
@@ -172,6 +200,16 @@ impl Codegen for AArgs {
                 res
             }
             AArgs::Repeatable(_, _) => todo!(),
+            AArgs::DLit(info, lit, doc) => codegen::Command {
+                condition: codegen::Condition {
+                    parents: &info.get_parent().get_parents_with_self(),
+                    token_position: info.get_position(),
+
+                    ..Default::default()
+                },
+                prog: (lit, doc),
+            }
+            .to_string(),
         }
     }
 }
@@ -199,6 +237,8 @@ impl AArgs {
             }
             AArgs::Sequential(_, seq) => seq.iter().map(|arg| arg.get_token_size()).sum(),
             AArgs::Repeatable(_, _) => None,
+            AArgs::DLit(_, _, _) => Some(1),
+            AArgs::PathBpffs(_) => Some(1),
         }
     }
 }
