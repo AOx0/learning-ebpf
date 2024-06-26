@@ -30,7 +30,7 @@ impl ArgInfo {
 
 #[derive(Clone)]
 pub enum Args {
-    // Repeatable(Rc<Arg>),
+    Repeatable(Box<Args>),
     Lit(&'static str),
     DLit(&'static str, &'static str),
     Prog,
@@ -68,13 +68,17 @@ impl AArgs {
                 AArgs::Sequential(ArgInfo::new(parent), seq)
             }
             Args::DLit(lit, docs) => AArgs::DLit(ArgInfo::new(parent), lit, docs),
+            Args::Repeatable(seq) => AArgs::Repeatable(
+                ArgInfo::new(parent.clone()),
+                Box::new(AArgs::from(*seq, parent)),
+            ),
         }
     }
 }
 
 #[derive(Clone)]
 pub enum AArgs {
-    Repeatable(ArgInfo, Rc<AArgs>),
+    Repeatable(ArgInfo, Box<AArgs>),
     Lit(ArgInfo, &'static str),
     DLit(ArgInfo, &'static str, &'static str),
     Prog(ArgInfo),
@@ -199,7 +203,16 @@ impl Codegen for AArgs {
 
                 res
             }
-            AArgs::Repeatable(_, _) => todo!(),
+            AArgs::Repeatable(_, seq) => {
+                *seq.get_info().position.borrow_mut() = self
+                    .get_info()
+                    .get_position()
+                    .get_value()
+                    .map(codegen::Position::Ge)
+                    .unwrap_or_default();
+
+                seq.generate()
+            }
             AArgs::DLit(info, lit, doc) => codegen::Command {
                 condition: codegen::Condition {
                     parents: &info.get_parent().get_parents_with_self(),
