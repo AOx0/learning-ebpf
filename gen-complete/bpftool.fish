@@ -64,6 +64,7 @@ function __fish_bpftool_count_commands
     set -l cursor_pos (commandline -C)
     set -l cmd_before_cursor (string sub -l $cursor_pos "$cmd_str")
     set cmd_before_cursor (string replace -r ' {2,}' ' ' "$cmd_before_cursor")
+    # The last space does need to be counted
     # set cmd_before_cursor (string trim "$cmd_before_cursor")
     set -l cmd_parts (string split ' ' "$cmd_before_cursor")
     set -l cmd_count 0
