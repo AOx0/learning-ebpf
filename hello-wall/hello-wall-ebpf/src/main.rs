@@ -4,6 +4,7 @@
 use core::slice;
 
 use aya_ebpf::{bindings::xdp_action, macros::xdp, programs::XdpContext};
+use aya_log_ebpf::error;
 #[allow(unused_imports)]
 // use aya_log_ebpf::{error, info, warn};
 use aya_log_ebpf::info;
@@ -68,6 +69,20 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
     if !matches!(ip4.protocol(), IpNumber::TCP) {
         return Ok(xdp_action::XDP_PASS);
     }
+
+    let header_size = ip4.ihl() * 4;
+    if !(20..=60).contains(&header_size) {
+        error!(&ctx, "Invalid ihl()");
+        return Ok(xdp_action::XDP_PASS);
+    }
+
+    if unsafe { data.curr().unwrap().add(header_size.into()) } >= data.ctx.data_end() as *const u8 {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
+    let slice = data.checked_slice(100).ok_or(xdp_action::XDP_PASS)?;
+    let val = slice[header_size as usize + 1];
+    info!(&ctx, "{}", val);
 
     let ip4_mut: &mut [u8] = slice_mut(ip4.slice());
     let eth_mut: &mut [u8] = slice_mut(eth.slice());
@@ -172,7 +187,7 @@ fn parse_ip4_header(data: &mut Data) -> Option<Ipv4HeaderSlice<'static>> {
     let slice = data.checked_slice(size as usize * 4)?;
     let header = Ipv4HeaderSlice::from_slice(slice).ok()?;
 
-    data.inc(header.slice().len());
+    // data.inc(header.slice().len());
     Some(header)
 }
 
