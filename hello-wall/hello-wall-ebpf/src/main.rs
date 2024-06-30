@@ -4,12 +4,11 @@
 use core::slice;
 
 use aya_ebpf::{bindings::xdp_action, macros::xdp, programs::XdpContext};
-use aya_log_ebpf::error;
-#[allow(unused_imports)]
-// use aya_log_ebpf::{error, info, warn};
 use aya_log_ebpf::info;
 
-use etherparse::{EtherType, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv4HeaderSlice};
+use etherparse::{
+    EtherType, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv4HeaderSlice, TcpHeaderSlice,
+};
 
 struct Data<'a> {
     ctx: &'a XdpContext,
@@ -44,6 +43,13 @@ impl Data<'_> {
         self.ocheck_bounds(size)?;
         Some(unsafe { slice::from_raw_parts(self.curr()?, size) })
     }
+
+    #[inline(always)]
+    #[must_use]
+    fn schecked_slice(&self, offset: usize, size: usize) -> Option<&'static [u8]> {
+        self.scheck_bounds(offset + size)?;
+        Some(unsafe { slice::from_raw_parts((self.ctx.data() + offset) as *const u8, size) })
+    }
 }
 
 #[xdp]
@@ -70,107 +76,38 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    let header_size = ip4.ihl() * 4;
-    if !(20..=60).contains(&header_size) {
-        error!(&ctx, "Invalid ihl()");
-        return Ok(xdp_action::XDP_PASS);
+    macro_rules! check {
+        ($val:expr) => {{
+            const OFFSET: usize = 14 + $val * 4;
+            let slice = data
+                .schecked_slice(OFFSET, 20)
+                .ok_or(xdp_action::XDP_PASS)?;
+            info!(&ctx, "This is a IPv{}: {}", ip4.version(), slice[1]);
+            return Ok(xdp_action::XDP_PASS);
+        }};
     }
 
-    if unsafe { data.curr().unwrap().add(header_size.into()) } >= data.ctx.data_end() as *const u8 {
-        return Ok(xdp_action::XDP_PASS);
-    }
-
-    let slice = data.checked_slice(100).ok_or(xdp_action::XDP_PASS)?;
-    let val = slice[header_size as usize + 1];
-    info!(&ctx, "{}", val);
-
-    let ip4_mut: &mut [u8] = slice_mut(ip4.slice());
-    let eth_mut: &mut [u8] = slice_mut(eth.slice());
-    let red = if let [192, 168, 1, 99] = ip4.destination() {
-        ip4_mut[15] = 67;
-
-        eth_mut[6] = 0xa4;
-        eth_mut[7] = 0x83;
-        eth_mut[8] = 0xe7;
-        eth_mut[9] = 0x4d;
-        eth_mut[10] = 0x99;
-        eth_mut[11] = 0x65;
-
-        ip4_mut[19] = 112;
-
-        eth_mut[0] = 0x18;
-        eth_mut[1] = 0x3d;
-        eth_mut[2] = 0xa2;
-        eth_mut[3] = 0x55;
-        eth_mut[4] = 0x7f;
-        eth_mut[5] = 0xb0;
-
-        info!(&ctx, "Redirecting to...");
-        true
-    } else
-    /* if let [192, 168, 1, 67] = ip4.source() {
-        ip4_mut[15] = 192;
-
-        eth_mut[6] = 0x00;
-        eth_mut[7] = 0xc0;
-        eth_mut[8] = 0xca;
-        eth_mut[9] = 0xb3;
-        eth_mut[10] = 0xf7;
-        eth_mut[11] = 0xd3;
-
-        info!(&ctx, "Redirecting back...");
-        true
-    } else */
-    {
-        info!(&ctx, "Pass...");
-        false
-    };
-
-    let [s1, s2, s3, s4] = ip4.source();
-    let [d1, d2, d3, d4] = ip4.destination();
-
-    let [sm1, sm2, sm3, sm4, sm5, sm6] = eth.source();
-    let [dm1, dm2, dm3, dm4, dm5, dm6] = eth.destination();
-
-    info!(
-        &ctx,
-        "{}.{}.{}.{} [{:x}:{:x}:{:x}:{:x}:{:x}:{:x}] -> {}.{}.{}.{} [{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]",
-        s1,
-        s2,
-        s3,
-        s4,
-        sm1,
-        sm2,
-        sm3,
-        sm4,
-        sm5,
-        sm6,
-        d1,
-        d2,
-        d3,
-        d4,
-        dm1,
-        dm2,
-        dm3,
-        dm4,
-        dm5,
-        dm6,
-    );
-
-    if red {
-        Ok(xdp_action::XDP_TX)
-    } else {
-        Ok(xdp_action::XDP_PASS)
+    match ip4.ihl() {
+        5 => check!(5),
+        6 => check!(6),
+        7 => check!(7),
+        8 => check!(8),
+        9 => check!(9),
+        10 => check!(10),
+        11 => check!(11),
+        12 => check!(12),
+        13 => check!(13),
+        14 => check!(14),
+        15 => check!(15),
+        _ => Err(xdp_action::XDP_ABORTED),
     }
 }
 
-#[allow(clippy::mut_from_ref)]
-fn slice_mut(slice: &[u8]) -> &mut [u8] {
-    #[allow(mutable_transmutes)]
-    unsafe {
-        core::mem::transmute(slice)
-    }
-}
+// fn parse_tcp_header<const START: usize>(data: &mut Data) -> Option<TcpHeaderSlice<'static>> {
+//     data.scheck_bounds(START + Ipv4Header::MIN_LEN)?;
+
+//     todo!()
+// }
 
 fn parse_ip4_header(data: &mut Data) -> Option<Ipv4HeaderSlice<'static>> {
     data.ocheck_bounds(Ipv4Header::MIN_LEN)?;
@@ -187,7 +124,7 @@ fn parse_ip4_header(data: &mut Data) -> Option<Ipv4HeaderSlice<'static>> {
     let slice = data.checked_slice(size as usize * 4)?;
     let header = Ipv4HeaderSlice::from_slice(slice).ok()?;
 
-    // data.inc(header.slice().len());
+    data.inc(header.slice().len());
     Some(header)
 }
 
