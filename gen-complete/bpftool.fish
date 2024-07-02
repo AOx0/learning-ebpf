@@ -5,7 +5,6 @@ set -l prog_spec name id tag
 
 
 # Complete functions by name, tag or id
-
 function __fish_bpftool_prog_profile_needs_completion
     set -l cmd (commandline -opc)
     set -l token (commandline -t)
@@ -118,7 +117,6 @@ end
 function __fish_bpftool_complete_progs_tag
     sudo bpftool prog list | rg 'tag ' | awk -F ' ' '{ print($6) }'
 end
-
 complete -c bpftool -f
 complete -c bpftool -n "test (__fish_bpftool_count_commands) -eq 0" -s h -l help -d "Print short help message"
 complete -c bpftool -n "test (__fish_bpftool_count_commands) -eq 0" -s V -l version -d "Print version number, libbpf version, and included optional features."

@@ -1,9 +1,7 @@
 use crate::codegen::Codegen;
-use itertools::Itertools;
 
 mod codegen;
 mod constants;
-
 mod tree;
 
 use tree::{Args, Command};
@@ -20,24 +18,8 @@ macro_rules! sec {
 fn main() {
     let mut res = String::new();
 
-    res += &format!(
-        "set -l program_types {}\n",
-        constants::PROGRAM_TYPES.iter().map(|v| v.0).join(" ")
-    );
-    res += &format!(
-        "set -l attach_types {}\n",
-        constants::ATTACH_TYPES.iter().map(|v| v.0).join(" ")
-    );
-    res += &format!(
-        "set -l metric_types {}\n",
-        constants::METRIC_TYPES.iter().map(|v| v.0).join(" ")
-    );
-    res += "set -l prog_spec name id tag\n";
-
-    res += sec!("Complete functions by name, tag or id");
-    res += constants::PROG_FUNCT;
-
-    // We do not want to complete files by default
+    res += sec!("Fish functions");
+    res += constants::FISH_FUNCTIONS;
     res += "\ncomplete -c bpftool -f\n";
 
     #[rustfmt::skip]
