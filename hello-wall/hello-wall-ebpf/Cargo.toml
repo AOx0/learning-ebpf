@@ -8,6 +8,7 @@ aya-ebpf = "0.1.0"
 aya-log-ebpf = "0.1.0"
 etherparse = { version = "0.15.0", default-features = false }
 hello-wall-common = { path = "../hello-wall-common" }
+volatile = "0.2.6"
 
 [[bin]]
 name = "hello-wall"

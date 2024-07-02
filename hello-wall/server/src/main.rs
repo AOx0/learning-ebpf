@@ -10,9 +10,10 @@ async fn hello() -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
+    let port = std::env::args().nth(1).unwrap();
     let router = Router::new().route("/", get(hello));
 
-    let tcp_listener = tokio::net::TcpListener::bind("[::]:6000").await?;
+    let tcp_listener = tokio::net::TcpListener::bind(format!("[::]:{port}")).await?;
 
     axum::serve(tcp_listener, router.into_make_service()).await
 }

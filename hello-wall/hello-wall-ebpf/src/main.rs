@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::slice;
+use core::{ops::Add, slice};
 
 use aya_ebpf::{bindings::xdp_action, macros::xdp, programs::XdpContext};
 use aya_log_ebpf::info;
@@ -141,24 +141,24 @@ fn post_ip4<const OFFSET: usize, const SIZE: usize>(
     const SERVER: [u8; 4] = [192, 168, 1, 112];
     const SERVER_MAC: [u8; 6] = [0x18, 0x3d, 0xa2, 0x55, 0x7f, 0xb0];
 
-    const LOADER_MAC: [u8; 6] = [0x00, 0xc0, 0xca, 0xb3, 0xf7, 0xd3];
+    const LOADER_MAC: [u8; 6] = [0x00, 0x45, 0xe2, 0x4d, 0x9f, 0xe5];
 
-    let source = core::hint::black_box(ip4.source());
+    let source = ip4.source();
 
     let from_server = source == SERVER;
-    let from_client = source == CLIENT && tcp.destination_port() == 6000;
+    let from_client = source == CLIENT && tcp.destination_port() == 5000;
     if !(from_server || from_client) {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    #[allow(mutable_transmutes)]
-    let ip4_mut: &mut [u8] = unsafe { core::mem::transmute(ip4.slice()) };
-    #[allow(mutable_transmutes)]
-    let eth_mut: &mut [u8] = unsafe { core::mem::transmute(eth.slice()) };
+    data.scheck_bounds(OFFSET).ok_or(xdp_action::XDP_PASS)?;
+    let eth_mut: &mut [u8] =
+        unsafe { core::slice::from_raw_parts_mut(data.ctx.data() as *mut u8, 14) };
+    let ip4_mut: &mut [u8] =
+        unsafe { core::slice::from_raw_parts_mut(data.ctx.data().add(14) as *mut u8, SIZE) };
 
-    // data.scheck_bounds(START).ok_or(xdp_action::XDP_PASS)?;
+    ip4_mut[15] = 99;
 
-    ip4_mut[15] = 192;
     eth_mut[6] = LOADER_MAC[0];
     eth_mut[7] = LOADER_MAC[1];
     eth_mut[8] = LOADER_MAC[2];
@@ -182,19 +182,21 @@ fn post_ip4<const OFFSET: usize, const SIZE: usize>(
         ip4_mut[10] = checksum[0];
         ip4_mut[11] = checksum[1];
 
+        let ip_source = *ip4_mut[12..16].first_chunk::<4>().unwrap();
+
         info!(
             data.ctx,
-            "SUM: 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
+            "CLIENT -> SERVER SUM: 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
             calculate_ipv4_checksum,
             core::hint::black_box(eth.source()),
-            core::hint::black_box(u32::from_be_bytes(ip4.source())),
+            core::hint::black_box(u32::from_be_bytes(ip_source)),
             core::hint::black_box(tcp.source_port()),
             core::hint::black_box(eth.destination()),
             core::hint::black_box(u32::from_be_bytes(ip4.destination())),
             core::hint::black_box(tcp.destination_port()),
         );
         Ok(xdp_action::XDP_TX)
-    } else {
+    } else if source == SERVER {
         ip4_mut[19] = 67;
 
         eth_mut[0] = CLIENT_MAC[0];
@@ -210,18 +212,22 @@ fn post_ip4<const OFFSET: usize, const SIZE: usize>(
         ip4_mut[10] = checksum[0];
         ip4_mut[11] = checksum[1];
 
+        let ip_source = *ip4_mut[12..16].first_chunk::<4>().unwrap();
+
         info!(
             data.ctx,
-            "SUM: 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
+            "SERVER -> CLIENT SUM: 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
             calculate_ipv4_checksum,
             core::hint::black_box(eth.source()),
-            core::hint::black_box(u32::from_be_bytes(ip4.source())),
+            core::hint::black_box(u32::from_be_bytes(ip_source)),
             core::hint::black_box(tcp.source_port()),
             core::hint::black_box(eth.destination()),
             core::hint::black_box(u32::from_be_bytes(ip4.destination())),
             core::hint::black_box(tcp.destination_port()),
         );
         Ok(xdp_action::XDP_TX)
+    } else {
+        Ok(xdp_action::XDP_PASS)
     }
 }
 
