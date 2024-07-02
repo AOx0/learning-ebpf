@@ -7,8 +7,8 @@ use aya_ebpf::{bindings::xdp_action, macros::xdp, programs::XdpContext};
 use aya_log_ebpf::info;
 
 use etherparse::{
-    EtherType, Ethernet2HeaderSlice as Ethernet, IpNumber, Ipv4Header, Ipv4HeaderSlice, TcpHeader,
-    TcpHeaderSlice,
+    checksum, EtherType, Ethernet2HeaderSlice as Ethernet, IpNumber, Ipv4Header, Ipv4HeaderSlice,
+    TcpHeader, TcpHeaderSlice,
 };
 
 struct Data<'a> {
@@ -80,43 +80,149 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
     // From: (eth_header) + (ipv4 header)
     //  aka: (14) + ( ip::ihl * 4 )
     match ip4.ihl() {
-        5 => post_ip4::<34>(data, eth, ip4),
-        6 => post_ip4::<38>(data, eth, ip4),
-        7 => post_ip4::<42>(data, eth, ip4),
-        8 => post_ip4::<46>(data, eth, ip4),
-        9 => post_ip4::<50>(data, eth, ip4),
-        10 => post_ip4::<54>(data, eth, ip4),
-        11 => post_ip4::<58>(data, eth, ip4),
-        12 => post_ip4::<62>(data, eth, ip4),
-        13 => post_ip4::<66>(data, eth, ip4),
-        14 => post_ip4::<70>(data, eth, ip4),
-        15 => post_ip4::<74>(data, eth, ip4),
+        5 => post_ip4::<34, 20>(data, eth, ip4),
+        6 => post_ip4::<38, 24>(data, eth, ip4),
+        7 => post_ip4::<42, 28>(data, eth, ip4),
+        8 => post_ip4::<46, 32>(data, eth, ip4),
+        9 => post_ip4::<50, 36>(data, eth, ip4),
+        10 => post_ip4::<54, 40>(data, eth, ip4),
+        11 => post_ip4::<58, 44>(data, eth, ip4),
+        12 => post_ip4::<62, 48>(data, eth, ip4),
+        13 => post_ip4::<66, 52>(data, eth, ip4),
+        14 => post_ip4::<70, 56>(data, eth, ip4),
+        15 => post_ip4::<74, 60>(data, eth, ip4),
         _ => Err(xdp_action::XDP_ABORTED),
     }
 }
 
-fn post_ip4<const START: usize>(
+fn calc_header_checksum<const SIZE: usize>(header: Ipv4HeaderSlice) -> u16 {
+    if header.slice().len() != SIZE {
+        return 0;
+    }
+    checksum::Sum16BitWords::new()
+        .add_2bytes([
+            (4 << 4) | header.ihl(),
+            (header.dcp().value() << 2) | header.ecn().value(),
+        ])
+        .add_2bytes(header.total_len().to_be_bytes())
+        .add_2bytes(header.identification().to_be_bytes())
+        .add_2bytes({
+            let frag_off_be = header.fragments_offset().value().to_be_bytes();
+            let flags = {
+                let mut result = 0;
+                if header.dont_fragment() {
+                    result |= 64;
+                }
+                if header.more_fragments() {
+                    result |= 32;
+                }
+                result
+            };
+            [flags | (frag_off_be[0] & 0x1f), frag_off_be[1]]
+        })
+        .add_2bytes([header.ttl(), header.protocol().0])
+        .add_4bytes(header.source())
+        .add_4bytes(header.destination())
+        .add_slice(header.options())
+        .ones_complement()
+        .to_be()
+}
+
+fn post_ip4<const OFFSET: usize, const SIZE: usize>(
     data: &mut Data,
     eth: Ethernet,
     ip4: Ipv4HeaderSlice,
 ) -> Result<u32, u32> {
-    let tcp = parse_tcp_header::<START>(data).ok_or(xdp_action::XDP_DROP)?;
+    let tcp = parse_tcp_header::<OFFSET>(data).ok_or(xdp_action::XDP_DROP)?;
 
-    info!(
-        data.ctx,
-        "\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
-        eth.source(),
-        u32::from_be_bytes(ip4.source()),
-        tcp.source_port(),
-        eth.destination(),
-        u32::from_be_bytes(ip4.destination()),
-        tcp.destination_port(),
-    );
+    const CLIENT: [u8; 4] = [192, 168, 1, 67];
+    const CLIENT_MAC: [u8; 6] = [0xa4, 0x83, 0xe7, 0x4d, 0x99, 0x65];
 
-    // #[allow(mutable_transmutes)]
-    // let eth_mut: &mut [u8] = unsafe { core::mem::transmute(eth.slice()) };
+    const SERVER: [u8; 4] = [192, 168, 1, 112];
+    const SERVER_MAC: [u8; 6] = [0x18, 0x3d, 0xa2, 0x55, 0x7f, 0xb0];
 
-    Ok(xdp_action::XDP_PASS)
+    const LOADER_MAC: [u8; 6] = [0x00, 0xc0, 0xca, 0xb3, 0xf7, 0xd3];
+
+    let source = core::hint::black_box(ip4.source());
+
+    let from_server = source == SERVER;
+    let from_client = source == CLIENT && tcp.destination_port() == 6000;
+    if !(from_server || from_client) {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
+    #[allow(mutable_transmutes)]
+    let ip4_mut: &mut [u8] = unsafe { core::mem::transmute(ip4.slice()) };
+    #[allow(mutable_transmutes)]
+    let eth_mut: &mut [u8] = unsafe { core::mem::transmute(eth.slice()) };
+
+    // data.scheck_bounds(START).ok_or(xdp_action::XDP_PASS)?;
+
+    ip4_mut[15] = 192;
+    eth_mut[6] = LOADER_MAC[0];
+    eth_mut[7] = LOADER_MAC[1];
+    eth_mut[8] = LOADER_MAC[2];
+    eth_mut[9] = LOADER_MAC[3];
+    eth_mut[10] = LOADER_MAC[4];
+    eth_mut[11] = LOADER_MAC[5];
+
+    if source == CLIENT {
+        ip4_mut[19] = 112;
+
+        eth_mut[0] = SERVER_MAC[0];
+        eth_mut[1] = SERVER_MAC[1];
+        eth_mut[2] = SERVER_MAC[2];
+        eth_mut[3] = SERVER_MAC[3];
+        eth_mut[4] = SERVER_MAC[4];
+        eth_mut[5] = SERVER_MAC[5];
+
+        data.scheck_bounds(OFFSET).ok_or(xdp_action::XDP_PASS)?;
+        let calculate_ipv4_checksum = calc_header_checksum::<SIZE>(ip4);
+        let checksum = calculate_ipv4_checksum.to_be_bytes();
+        ip4_mut[10] = checksum[0];
+        ip4_mut[11] = checksum[1];
+
+        info!(
+            data.ctx,
+            "SUM: 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
+            calculate_ipv4_checksum,
+            core::hint::black_box(eth.source()),
+            core::hint::black_box(u32::from_be_bytes(ip4.source())),
+            core::hint::black_box(tcp.source_port()),
+            core::hint::black_box(eth.destination()),
+            core::hint::black_box(u32::from_be_bytes(ip4.destination())),
+            core::hint::black_box(tcp.destination_port()),
+        );
+        Ok(xdp_action::XDP_TX)
+    } else {
+        ip4_mut[19] = 67;
+
+        eth_mut[0] = CLIENT_MAC[0];
+        eth_mut[1] = CLIENT_MAC[1];
+        eth_mut[2] = CLIENT_MAC[2];
+        eth_mut[3] = CLIENT_MAC[3];
+        eth_mut[4] = CLIENT_MAC[4];
+        eth_mut[5] = CLIENT_MAC[5];
+
+        data.scheck_bounds(OFFSET).ok_or(xdp_action::XDP_PASS)?;
+        let calculate_ipv4_checksum = calc_header_checksum::<SIZE>(ip4);
+        let checksum = calculate_ipv4_checksum.to_be_bytes();
+        ip4_mut[10] = checksum[0];
+        ip4_mut[11] = checksum[1];
+
+        info!(
+            data.ctx,
+            "SUM: 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
+            calculate_ipv4_checksum,
+            core::hint::black_box(eth.source()),
+            core::hint::black_box(u32::from_be_bytes(ip4.source())),
+            core::hint::black_box(tcp.source_port()),
+            core::hint::black_box(eth.destination()),
+            core::hint::black_box(u32::from_be_bytes(ip4.destination())),
+            core::hint::black_box(tcp.destination_port()),
+        );
+        Ok(xdp_action::XDP_TX)
+    }
 }
 
 fn parse_tcp_header<const START: usize>(data: &mut Data) -> Option<TcpHeaderSlice<'static>> {

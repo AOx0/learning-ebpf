@@ -12,7 +12,7 @@ async fn hello() -> String {
 async fn main() -> Result<(), std::io::Error> {
     let router = Router::new().route("/", get(hello));
 
-    let tcp_listener = tokio::net::TcpListener::bind("[::]:5000").await?;
+    let tcp_listener = tokio::net::TcpListener::bind("[::]:6000").await?;
 
     axum::serve(tcp_listener, router.into_make_service()).await
 }
