@@ -155,6 +155,33 @@ function __fish_bpftool_count_commands
     echo $cmd_count
 end
 
+function __fish_bpftool_complete_file 
+    set -l options 's/source=' 'f/filters='
+    argparse $options -- $argv
+    
+    set ct -l (commandline -ct)
+    set ct (string trim $ct)
+    set start -l ""
+
+    if set -q _flag_source
+        set start "$_flag_source"
+    end
+
+    if test -n "$ct"
+        set start "$ct"
+    end
+
+    if set -q _flag_filters
+        complete -C"\'\' $start" | string match -re "(?:/$_flag_filters)\$"
+    else
+        complete -C"\'\' $start"
+    end
+end
+
+function __fish_bpftool_complete_o_file
+    complete -C"\'\' $(commandline -ct)" | string match -re "(?:/|\.o)\$"
+end
+
 function __fish_bpftool_complete_map_id
     sudo bpftool map list | rg '^\d+:' | awk -F ' ' '{ print($1 "\'"$4"\'") }' | sed 's/:/\t/g'
 end

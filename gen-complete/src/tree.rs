@@ -1,15 +1,14 @@
 use crate::codegen;
 use crate::codegen::Codegen;
 use itertools::Itertools;
-use std::borrow::{Borrow, BorrowMut};
-use std::cell::{RefCell, RefMut};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cell::RefCell;
+use std::collections::{HashSet, VecDeque};
 use std::rc::{Rc, Weak};
 
 #[derive(Clone, Default)]
 pub struct ArgInfo {
     parent: RefCell<Weak<Command>>,
-    fixed_position: RefCell<codegen::Position>,
+    position: RefCell<codegen::Position>,
 }
 
 impl ArgInfo {
@@ -20,8 +19,8 @@ impl ArgInfo {
         }
     }
 
-    fn get_parent_mut(&self) -> RefMut<'_, Weak<Command>> {
-        self.parent.borrow_mut()
+    fn get_position(&self) -> codegen::Position {
+        *self.position.borrow()
     }
 
     fn get_parent(&self) -> Rc<Command> {
@@ -31,12 +30,14 @@ impl ArgInfo {
 
 #[derive(Clone)]
 pub enum Args {
-    // Repeatable(Rc<Arg>),
+    Repeatable(Box<Args>),
     Lit(&'static str),
+    DLit(&'static str, &'static str),
     Prog,
     Map,
     Path,
-    Path_o,
+    PathO,
+    PathBpffs,
     Event(&'static str, &'static str),
     OneOf(Vec<Args>),
     Sequential(Vec<Args>),
@@ -49,7 +50,8 @@ impl AArgs {
             Args::Prog => AArgs::Prog(ArgInfo::new(parent)),
             Args::Map => AArgs::Map(ArgInfo::new(parent)),
             Args::Path => AArgs::Path(ArgInfo::new(parent)),
-            Args::Path_o => AArgs::PathO(ArgInfo::new(parent)),
+            Args::PathO => AArgs::PathO(ArgInfo::new(parent)),
+            Args::PathBpffs => AArgs::PathBpffs(ArgInfo::new(parent)),
             Args::Event(name, fun) => AArgs::Event(ArgInfo::new(parent), name, fun),
             Args::OneOf(variants) => {
                 let variants = variants
@@ -65,17 +67,24 @@ impl AArgs {
                     .collect_vec();
                 AArgs::Sequential(ArgInfo::new(parent), seq)
             }
+            Args::DLit(lit, docs) => AArgs::DLit(ArgInfo::new(parent), lit, docs),
+            Args::Repeatable(seq) => AArgs::Repeatable(
+                ArgInfo::new(parent.clone()),
+                Box::new(AArgs::from(*seq, parent)),
+            ),
         }
     }
 }
 
 #[derive(Clone)]
 pub enum AArgs {
-    // Repeatable(Rc<Arg>),
+    Repeatable(ArgInfo, Box<AArgs>),
     Lit(ArgInfo, &'static str),
+    DLit(ArgInfo, &'static str, &'static str),
     Prog(ArgInfo),
     Map(ArgInfo),
     Path(ArgInfo),
+    PathBpffs(ArgInfo),
     PathO(ArgInfo),
     Event(ArgInfo, &'static str, &'static str),
     OneOf(ArgInfo, Vec<AArgs>),
@@ -93,6 +102,9 @@ impl AArgs {
             AArgs::Event(info, _, _) => info,
             AArgs::OneOf(info, _) => info,
             AArgs::Sequential(info, _) => info,
+            AArgs::Repeatable(info, _) => info,
+            AArgs::DLit(info, _, _) => info,
+            AArgs::PathBpffs(info) => info,
         }
     }
 }
@@ -103,7 +115,7 @@ impl Codegen for AArgs {
             AArgs::Lit(info, lit) => codegen::Command {
                 condition: codegen::Condition {
                     parents: &info.get_parent().get_parents_with_self(),
-                    token_position: *info.fixed_position.borrow(),
+                    token_position: info.get_position(),
 
                     ..Default::default()
                 },
@@ -113,29 +125,54 @@ impl Codegen for AArgs {
             AArgs::Prog(info) => codegen::Prog {
                 condition: codegen::Condition {
                     parents: &info.get_parent().get_parents_with_self(),
-                    token_position: *info.fixed_position.borrow(),
+                    token_position: info.get_position(),
                     ..Default::default()
                 },
-                allow_repetition: true,
             }
             .to_string(),
             AArgs::Map(info) => codegen::Map {
                 condition: codegen::Condition {
                     parents: &info.get_parent().get_parents_with_self(),
-                    token_position: *info.fixed_position.borrow(),
+                    token_position: info.get_position(),
                     ..Default::default()
                 },
-                allow_repetition: true,
             }
             .to_string(),
-            AArgs::Path(_) => todo!(),
-            AArgs::PathO(_) => todo!(),
+            AArgs::Path(info) => codegen::Path {
+                condition: codegen::Condition {
+                    parents: &info.get_parent().get_parents_with_self(),
+                    token_position: info.get_position(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+            .to_string(),
+            AArgs::PathO(info) => codegen::Path {
+                condition: codegen::Condition {
+                    parents: &info.get_parent().get_parents_with_self(),
+                    token_position: info.get_position(),
+                    ..Default::default()
+                },
+                extensions: &["\\.o"],
+                ..Default::default()
+            }
+            .to_string(),
+            AArgs::PathBpffs(info) => codegen::Path {
+                condition: codegen::Condition {
+                    parents: &info.get_parent().get_parents_with_self(),
+                    token_position: info.get_position(),
+                    ..Default::default()
+                },
+                source: Some("/sys/fs/bpf/"),
+                ..Default::default()
+            }
+            .to_string(),
             AArgs::Event(_, _, _) => todo!(),
             AArgs::OneOf(info, variants) => {
                 let mut res = String::new();
                 for variant in variants {
                     let var_info = variant.get_info();
-                    *var_info.fixed_position.borrow_mut() = *info.fixed_position.borrow();
+                    *var_info.position.borrow_mut() = info.get_position();
                     res += &variant.generate();
                 }
 
@@ -143,43 +180,78 @@ impl Codegen for AArgs {
             }
             AArgs::Sequential(info, seq) => {
                 let mut res = String::new();
-                let mut contador = info.parent.borrow().upgrade().unwrap().get_level() + 1;
+                let mut contador = Some(info.get_position());
+                let mut last = info.get_position();
 
                 for arg in seq.iter() {
-                    *arg.get_info().fixed_position.borrow_mut() = codegen::Position::Eq(contador);
-                    contador += arg.get_token_size();
+                    // Emit absolute position while possible
+                    if let Some(c) = contador {
+                        *arg.get_info().position.borrow_mut() = c;
+                        contador = if let Some(len) = arg.get_token_size() {
+                            last = c + len;
+                            Some(last)
+                        } else {
+                            None
+                        };
+                    } else {
+                        *arg.get_info().position.borrow_mut() =
+                            codegen::Position::Gt(last.get_value().unwrap());
+                    }
+
                     res += &arg.generate();
                 }
 
                 res
             }
+            AArgs::Repeatable(_, seq) => {
+                *seq.get_info().position.borrow_mut() = self
+                    .get_info()
+                    .get_position()
+                    .get_value()
+                    .map(codegen::Position::Ge)
+                    .unwrap_or_default();
+
+                seq.generate()
+            }
+            AArgs::DLit(info, lit, doc) => codegen::Command {
+                condition: codegen::Condition {
+                    parents: &info.get_parent().get_parents_with_self(),
+                    token_position: info.get_position(),
+
+                    ..Default::default()
+                },
+                prog: (lit, doc),
+            }
+            .to_string(),
         }
     }
 }
 
 impl AArgs {
-    fn get_token_size(&self) -> usize {
+    fn get_token_size(&self) -> Option<usize> {
         match self {
-            AArgs::Lit(_, _) => 1,
-            AArgs::Prog(_) => 2,
-            AArgs::Map(_) => 2,
-            AArgs::Path(_) => 1,
-            AArgs::PathO(_) => 1,
-            AArgs::Event(_, _, _) => 2,
+            AArgs::Lit(_, _) => Some(1),
+            AArgs::Prog(_) => Some(2),
+            AArgs::Map(_) => Some(2),
+            AArgs::Path(_) => Some(1),
+            AArgs::PathO(_) => Some(1),
+            AArgs::Event(_, _, _) => Some(2),
             AArgs::OneOf(_, seq) => {
                 let sizes = seq
                     .iter()
                     .map(|arg| arg.get_token_size())
-                    .collect::<HashSet<usize>>();
+                    .collect::<HashSet<Option<usize>>>();
 
-                assert!(
-                    sizes.len() == 1,
-                    "Error: El tamaño de las variants debe ser el mismo"
-                );
-
-                *sizes.iter().next().unwrap()
+                if sizes.len() == 1 {
+                    sizes.iter().flatten().next().copied()
+                } else {
+                    None
+                }
             }
             AArgs::Sequential(_, seq) => seq.iter().map(|arg| arg.get_token_size()).sum(),
+            AArgs::Repeatable(_, _) => None,
+            AArgs::DLit(_, _, _) => Some(1),
+            AArgs::PathBpffs(_) => Some(1),
         }
     }
 }
@@ -191,7 +263,8 @@ pub struct Command {
     pub children: RefCell<Vec<Rc<Command>>>,
     pub flags: RefCell<Vec<(char, &'static str, &'static str)>>,
     pub include_in_codegen: bool,
-    pub args: RefCell<Option<AArgs>>,
+    pub args: RefCell<Option<Args>>,
+    pub aargs: RefCell<Option<AArgs>>,
 }
 
 impl Command {
@@ -217,10 +290,22 @@ impl Command {
 
     pub fn with_args(self: Rc<Self>, args: &[Args]) -> Rc<Self> {
         let args = Args::Sequential(args.to_vec());
-        let aargs = AArgs::from(args, RefCell::new(Rc::downgrade(&self)));
 
-        *self.args.borrow_mut() = Some(aargs);
+        *self.args.borrow_mut() = Some(args);
         self
+    }
+
+    pub fn setup_args(self: &Rc<Self>) {
+        if let Some(args) = self.args.borrow_mut().take() {
+            let aargs = AArgs::from(args, RefCell::new(Rc::downgrade(&self)));
+            *aargs.get_info().position.borrow_mut() =
+                codegen::Position::Eq(self.get_parents_with_self().len() + 1);
+            *self.aargs.borrow_mut() = Some(aargs);
+        }
+
+        for chid in self.children.borrow().iter() {
+            chid.setup_args();
+        }
     }
 
     pub fn with_children(self: Rc<Self>, children: &[Rc<Command>]) -> Rc<Self> {
@@ -287,6 +372,7 @@ impl Default for Command {
             flags: RefCell::default(),
             include_in_codegen: true,
             args: RefCell::default(),
+            aargs: RefCell::default(),
         }
     }
 }
@@ -329,7 +415,7 @@ impl Codegen for Command {
             .to_string();
 
             res += &self
-                .args
+                .aargs
                 .borrow()
                 .as_ref()
                 .map(|args| args.generate())

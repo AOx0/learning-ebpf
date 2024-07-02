@@ -78,33 +78,70 @@ fn main() {
             Command::rcd("prog", "Inspect and manipulate eBPF progs")
             .with_children(&[
                 Command::rcd("show", "Show information about loaded programs")
-                .with_args(&[
-                    Args::Prog,
-                    Args::OneOf(vec![ 
-                        Args::Lit("map"),
-                        Args::Lit("mapa"),
-                    ]), 
-                    Args::OneOf(vec![ 
-                        Args::Prog,
-                        Args::Map
-                    ]), 
-                    Args::Map
-                ]
-                ),
-                Command::rcd("list", "Show information about loaded programs"),
+                    .with_args(&[ Args::Prog, ]),
+                Command::rcd("list", "Show information about loaded programs")
+                    .with_args(&[ Args::Prog, ]),
                 Command::rcd("dump", "Dump eBPF instructions/image of programs")
                 .with_children(&[
-                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel"),
-                    Command::rcd("jited", "Dump jited image (host machine code) of the program"),
+                    Command::rcd("xlated", "Dump eBPF instructions of the programs from the kernel")
+                    .with_args(&[ 
+                        Args::Prog, 
+                        Args::Repeatable(Box::new(Args::OneOf(vec![
+                            Args::DLit("opcodes", "Display raw codes"),
+                            Args::DLit("file", "Dump eBPF instructions of the programs from the kernel"),
+                            Args::DLit("linum", "Display filename, line number and column"),
+                            Args::DLit("visual", "Display eBPF instructions with CFG in DOT format")
+                        ]))),
+                        Args::Path
+                    ]),
+                    Command::rcd("jited", "Dump jited image (host machine code) of the program")
+                    .with_args(&[ 
+                        Args::Prog, 
+                        Args::Repeatable(Box::new(Args::OneOf(vec![
+                            Args::DLit("opcodes", "Display raw codes"),
+                            Args::DLit("file", "Dump eBPF instructions of the programs from the kernel"),
+                            Args::DLit("linum", "Display filename, line number and column"),
+                            Args::DLit("visual", "Display eBPF instructions with CFG in DOT format")
+                        ]))),
+                        Args::Path
+                    ]),
                 ]),
-                Command::rcd("pin", "Pin program as FILE"),
-                Command::rcd("load", "Load bpf program(s) from binary OBJ and pin as PATH"),
-                Command::rcd("loadall", "Load bpf program(s) from binary OBJ and pin as PATH"),
-                Command::rcd("attach", "Attach bpf program"),
-                Command::rcd("detach", "Detach bpf program"),
+                Command::rcd("pin", "Pin program as a FILE")
+                .with_args(&[ 
+                    Args::Prog,
+                    Args::PathBpffs
+                ]),
+                Command::rcd("load", " Pins only the first program from the OBJ as PATH.Note: PATH must be located in bpffs mount. It must not contain a dot character ('.'), which is reserved for future extensions of bpffs.")
+                .with_args(&[ 
+                    Args::PathO 
+                ]),
+                Command::rcd("loadall", "Pins all programs from the OBJ under PATH directory.Note: PATH must be located in bpffs mount. It must not contain a dot character ('.'), which is reserved for future extensions of bpffs."),
+                Command::rcd("attach", "Attach bpf program PROG (with type specified by ATTACH_TYPE).")
+                .with_args(&[
+                    Args::OneOf(
+                        constants::ATTACH_TYPES.map(|(a, d)| Args::DLit(a, d)).to_vec()
+                    ),
+                    Args::Map
+                ]),
+                Command::rcd("detach", "Detach bpf program")
+                .with_args(&[
+                    Args::OneOf(
+                        constants::ATTACH_TYPES.map(|(a, d)| Args::DLit(a, d)).to_vec()
+                    ),
+                    Args::Map
+                ]),
                 Command::rcd("tracelog", "Dump the trace pipe of the system to stdout"),
-                Command::rcd("run", "Run BPF program in the kernel testing infrastructure"),
-                Command::rcd("profile", "Profile bpf program"),
+                Command::rcd("run", "Run BPF program in the kernel testing infrastructure")
+                .with_args(&[
+                   Args::Prog,
+                   Args::Lit("data_in"),
+                   Args::Path,
+                ]),
+                Command::rcd("profile", "Profile bpf program")
+                .with_args(&[
+                    Args::Prog,
+                    Args::OneOf(constants::METRIC_TYPES.map(|(a, d)| Args::DLit(a, d)).to_vec())
+                ]),
                 Command::rcd("help", "Print short help message")
             ])
             .with_flags(&[
@@ -181,6 +218,7 @@ fn main() {
         ..Default::default()
     }.to_rc();
     bpftree.set_children_parents();
+    bpftree.setup_args();
 
     res += &bpftree.generate();
 
