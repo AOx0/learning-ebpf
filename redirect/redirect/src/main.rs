@@ -54,6 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let packets = RingBuf::try_from(bpf.map("PACKET").unwrap()).unwrap();
     let mut fd = AsyncFd::new(packets).unwrap();
+
     let file = std::fs::File::create("out.pcap").expect("Error creating file");
     let mut pcapng_writer = PcapWriter::new(file).unwrap();
 
@@ -63,18 +64,15 @@ async fn main() -> Result<(), anyhow::Error> {
         let inner = guard.get_inner_mut();
 
         while let Some(packet) = inner.next() {
-            let size = usize::from_be_bytes([
-                packet[0], packet[1], packet[2], packet[3], packet[4], packet[5], packet[6],
-                packet[7],
-            ]);
+            let size = u16::from_be_bytes(*packet.first_chunk::<2>().unwrap()) as usize;
             pcapng_writer
                 .write_packet(&PcapPacket::new(
                     tokio::time::Instant::now().duration_since(start),
                     size as u32,
-                    &packet[8..=size],
+                    &packet[2..size],
                 ))
                 .unwrap();
-            info!("Packet size {:?}", size);
+            info!("Packet size {:?}", &packet[2..size].len());
         }
 
         guard.clear_ready();

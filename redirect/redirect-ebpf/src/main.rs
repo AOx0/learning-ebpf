@@ -204,20 +204,20 @@ fn post_ip4<const OFFSET: usize, const SIZE: usize>(
 
     let packet_len = data.ctx.data_end() - data.ctx.data();
     if packet_len <= 1500 {
-        if let Some(mut space) = PACKET.reserve::<[u8; 1508]>(0) {
+        if let Some(mut space) = PACKET.reserve::<[u8; 1502]>(0) {
             if packet_len >= OFFSET + UdpHeader::LEN {
                 unsafe {
                     (space.as_mut_ptr() as *mut u8).write_bytes(0, 1500);
                     let ret = aya_ebpf::helpers::bpf_xdp_load_bytes(
                         data.ctx.ctx,
                         0,
-                        (space.as_ptr() as *const u8).add(8) as *mut _,
+                        (space.as_ptr() as *const u8).add(2) as *mut _,
                         packet_len as u32,
                     );
 
                     ptr::write_unaligned(
-                        space.as_mut_ptr() as *mut [u8; 8],
-                        packet_len.to_be_bytes(),
+                        space.as_mut_ptr() as *mut [u8; 2],
+                        (packet_len as u16).to_be_bytes(),
                     );
 
                     if ret == 0 {
