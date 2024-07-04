@@ -1,5 +1,5 @@
 [package]
-name = "hello-wall-common"
+name = "redirect-common"
 version = "0.1.0"
 edition = "2021"
 

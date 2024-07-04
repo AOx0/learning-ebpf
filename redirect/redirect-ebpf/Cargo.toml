@@ -1,5 +1,5 @@
 [package]
-name = "hello-wall-ebpf"
+name = "redirect-ebpf"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,11 +7,11 @@ edition = "2021"
 aya-ebpf = "0.1.0"
 aya-log-ebpf = "0.1.0"
 etherparse = { version = "0.15.0", default-features = false }
-hello-wall-common = { path = "../hello-wall-common" }
+redirect-common = { path = "../redirect-common" }
 volatile = "0.2.6"
 
 [[bin]]
-name = "hello-wall"
+name = "redirect"
 path = "src/main.rs"
 test = false
 bench = false

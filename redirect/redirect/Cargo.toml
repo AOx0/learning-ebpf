@@ -1,5 +1,5 @@
 [package]
-name = "hello-wall"
+name = "redirect"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -8,7 +8,7 @@ publish = false
 aya = "0.12"
 aya-log = "0.2"
 clap = { version = "4.1", features = ["derive"] }
-hello-wall-common = { path = "../hello-wall-common", features = ["user"] }
+redirect-common = { path = "../redirect-common", features = ["user"] }
 anyhow = "1"
 env_logger = "0.10"
 libc = "0.2"
@@ -18,5 +18,5 @@ pcap-file = "2.0.0"
 byteorder = "1.5.0"
 
 [[bin]]
-name = "hello-wall"
+name = "redirect"
 path = "src/main.rs"

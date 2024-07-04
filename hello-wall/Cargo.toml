@@ -1,3 +1,0 @@
-[workspace]
-resolver = "2"
-members = ["xtask", "hello-wall", "hello-wall-common", "server", "udp-listener"]
