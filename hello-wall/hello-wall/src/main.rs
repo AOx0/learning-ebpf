@@ -1,9 +1,17 @@
+use std::io::Write;
+
 use anyhow::Context;
+use aya::maps::RingBuf;
 use aya::programs::{Xdp, XdpFlags};
 use aya::{include_bytes_aligned, Bpf};
 use aya_log::BpfLogger;
+use byteorder::BigEndian;
 use clap::Parser;
 use log::{debug, info, warn};
+use pcap_file::pcap::{PcapPacket, PcapWriter};
+use pcap_file::pcapng::blocks::packet::PacketBlock;
+use pcap_file::pcapng::{Block, PcapNgBlock, PcapNgWriter};
+use tokio::io::unix::AsyncFd;
 use tokio::signal;
 
 #[derive(Debug, Parser)]
@@ -50,9 +58,34 @@ async fn main() -> Result<(), anyhow::Error> {
     program.attach(&opt.iface, XdpFlags::default())
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
 
-    info!("Waiting for Ctrl-C...");
-    signal::ctrl_c().await?;
-    info!("Exiting...");
+    let packets = RingBuf::try_from(bpf.map("PACKET").unwrap()).unwrap();
+    let mut fd = AsyncFd::new(packets).unwrap();
+    let mut counter = 1;
+    let file = std::fs::File::create("out.pcap").expect("Error creating file");
+    let mut pcapng_writer = PcapWriter::new(file).unwrap();
 
-    Ok(())
+    let start = tokio::time::Instant::now();
+    loop {
+        let mut guard = fd.readable_mut().await.unwrap();
+        let inner = guard.get_inner_mut();
+
+        while let Some(packet) = inner.next() {
+            let size = usize::from_be_bytes([
+                packet[0], packet[1], packet[2], packet[3], packet[4], packet[5], packet[6],
+                packet[7],
+            ]);
+            pcapng_writer
+                .write_packet(&PcapPacket::new(
+                    tokio::time::Instant::now().duration_since(start),
+                    size as u32,
+                    &packet[8..=size],
+                ))
+                .unwrap();
+            info!("Packet size {:?}", size);
+        }
+
+        guard.clear_ready();
+    }
+
+    pcapng_writer.into_writer().flush();
 }
