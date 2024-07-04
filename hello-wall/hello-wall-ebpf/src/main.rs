@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::{mem, ops::Add, ptr, slice};
+use core::{ops::Add, ptr, slice};
 
 use aya_ebpf::{
     bindings::xdp_action,
@@ -136,62 +136,6 @@ pub fn calc_ip_csum<const SIZE: usize>(header: Ipv4HeaderSlice) -> u16 {
         .to_be()
 }
 
-pub fn calc_checksum_ipv4_raw(
-    udp: &UdpHeaderSlice,
-    source: [u8; 4],
-    destination: [u8; 4],
-    payload: &[u8],
-) -> Result<u16, etherparse::err::ValueTooBigError<usize>> {
-    // check that the total length fits into the field
-    const MAX_PAYLOAD_LENGTH: usize = (u16::MAX as usize) - UdpHeader::LEN;
-    if MAX_PAYLOAD_LENGTH < payload.len() {
-        return Err(etherparse::err::ValueTooBigError {
-            actual: payload.len(),
-            max_allowed: MAX_PAYLOAD_LENGTH,
-            value_type: etherparse::err::ValueType::UdpPayloadLengthIpv4,
-        });
-    }
-
-    Ok(calc_checksum_ipv4_internal(
-        udp,
-        source,
-        destination,
-        payload,
-    ))
-}
-
-fn calc_checksum_post_ip(
-    udp: &UdpHeaderSlice,
-    ip_pseudo_header_sum: etherparse::checksum::Sum16BitWords,
-    payload: &[u8],
-) -> u16 {
-    ip_pseudo_header_sum
-        .add_2bytes(udp.source_port().to_be_bytes())
-        .add_2bytes(udp.destination_port().to_be_bytes())
-        .add_2bytes(udp.length().to_be_bytes())
-        .add_slice(payload)
-        .to_ones_complement_with_no_zero()
-        .to_be()
-}
-
-fn calc_checksum_ipv4_internal(
-    udp: &UdpHeaderSlice,
-    source: [u8; 4],
-    destination: [u8; 4],
-    payload: &[u8],
-) -> u16 {
-    calc_checksum_post_ip(
-        udp,
-        //pseudo header
-        etherparse::checksum::Sum16BitWords::new()
-            .add_4bytes(source)
-            .add_4bytes(destination)
-            .add_2bytes([0, etherparse::ip_number::UDP.0])
-            .add_2bytes(udp.length().to_be_bytes()),
-        payload,
-    )
-}
-
 fn post_ip4<const OFFSET: usize, const SIZE: usize>(
     data: &mut Data,
     ip4: Ipv4HeaderSlice,
@@ -215,6 +159,9 @@ fn post_ip4<const OFFSET: usize, const SIZE: usize>(
         unsafe { core::slice::from_raw_parts_mut(data.ctx.data() as *mut u8, 14) };
     let ip4_mut: &mut [u8] =
         unsafe { core::slice::from_raw_parts_mut(data.ctx.data().add(14) as *mut u8, SIZE) };
+    let udp_mut: &mut [u8] = unsafe {
+        core::slice::from_raw_parts_mut(data.ctx.data().add(OFFSET) as *mut u8, UdpHeader::LEN)
+    };
 
     ip4_mut[15] = 99;
     eth_mut[6..12].copy_from_slice(&LOADER_MAC);
@@ -239,6 +186,8 @@ fn post_ip4<const OFFSET: usize, const SIZE: usize>(
     let checksum =
         calc_ip_csum::<SIZE>(Ipv4HeaderSlice::from_slice(ip4_mut).unwrap()).to_be_bytes();
     ip4_mut[10..12].copy_from_slice(&checksum);
+
+    udp_mut[6..8].fill(0);
 
     info!(
         data.ctx,

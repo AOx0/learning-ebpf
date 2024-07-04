@@ -1,18 +1,12 @@
-use std::io::Write;
-
 use anyhow::Context;
 use aya::maps::RingBuf;
 use aya::programs::{Xdp, XdpFlags};
 use aya::{include_bytes_aligned, Bpf};
 use aya_log::BpfLogger;
-use byteorder::BigEndian;
 use clap::Parser;
 use log::{debug, info, warn};
 use pcap_file::pcap::{PcapPacket, PcapWriter};
-use pcap_file::pcapng::blocks::packet::PacketBlock;
-use pcap_file::pcapng::{Block, PcapNgBlock, PcapNgWriter};
 use tokio::io::unix::AsyncFd;
-use tokio::signal;
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -60,7 +54,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let packets = RingBuf::try_from(bpf.map("PACKET").unwrap()).unwrap();
     let mut fd = AsyncFd::new(packets).unwrap();
-    let mut counter = 1;
     let file = std::fs::File::create("out.pcap").expect("Error creating file");
     let mut pcapng_writer = PcapWriter::new(file).unwrap();
 
@@ -86,6 +79,4 @@ async fn main() -> Result<(), anyhow::Error> {
 
         guard.clear_ready();
     }
-
-    pcapng_writer.into_writer().flush();
 }
