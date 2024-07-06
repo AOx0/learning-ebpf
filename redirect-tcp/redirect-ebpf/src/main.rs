@@ -3,6 +3,7 @@
 
 use aya_ebpf::{
     bindings::xdp_action,
+    helpers::bpf_csum_diff,
     macros::{map, xdp},
     maps::RingBuf,
     programs::XdpContext,
@@ -38,6 +39,16 @@ pub fn hello_wall(ctx: XdpContext) -> u32 {
     }
 }
 
+#[inline(always)]
+pub fn csum_fold_helper(mut csum: u64) -> u16 {
+    for _i in 0..4 {
+        if (csum >> 16) > 0 {
+            csum = (csum & 0xffff) + (csum >> 16);
+        }
+    }
+    return !(csum as u16);
+}
+
 fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
     if ctx.data_end() - ctx.data() > MTU {
         unsafe { core::hint::unreachable_unchecked() }
@@ -55,15 +66,18 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
 
     bounds!(ctx, eth.size_usize() + IPv4::MIN_LEN).or_drop()?;
     let (mut ip4, rem) = IPv4::new(rem).or_drop()?;
-    if !matches!(ip4.protocol(), InetProtocol::UDP) {
+    if !matches!(ip4.protocol(), InetProtocol::TCP) {
         return Ok(xdp_action::XDP_PASS);
     }
 
     bounds!(ctx, eth.size_usize() + ip4.size() as usize + Tcp::MIN_LEN).or_drop()?;
-    let (mut tcp, rem) = Tcp::new(rem).or_drop()?;
+    let (mut tcp, _) = Tcp::new(rem).or_drop()?;
     if !((ip4.source() == &SERVER) || (ip4.source() == &CLIENT && tcp.destination() == 5000)) {
         return Ok(xdp_action::XDP_PASS);
     }
+
+    let mut orig_ip_source = ip4.source_u32();
+    let mut orig_ip_destination = ip4.destination_u32();
 
     let msg = if ip4.source() == &CLIENT {
         ip4.set_destination(&SERVER);
@@ -77,37 +91,56 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
 
     ip4.set_source(&LOADER);
     eth.set_source(&LOADER_MAC);
-    bounds!(
-        ctx,
-        eth.size_usize() + ip4.size() as usize + tcp.size() as usize + rem.len()
-    )
-    .or_drop()?;
 
-    let size = (eth.size_usize() as u32) + ip4.size() as u32;
-
-    if size < (Ethernet::MIN_LEN + IPv4::MIN_LEN + Tcp::MIN_LEN) as u32 {
-        return Err(xdp_action::XDP_PASS);
-    }
-
-    if size > MTU as u32 {
-        return Err(xdp_action::XDP_PASS);
-    }
-
-    if size as usize != eth.size_usize() + ip4.size() as usize + tcp.size() as usize + rem.len() {
-        return Err(xdp_action::XDP_PASS);
-    }
-
-    tcp.set_csum(
-        tcp.calc_checksum_ipv4_raw(*ip4.source(), *ip4.destination(), rem)
-            .or_drop()?,
-    );
+    let mut new_ip_source = ip4.source_u32();
+    let mut new_ip_destination = ip4.destination_u32();
     ip4.update_csum();
-    let csum = ip4.csum();
+
+    let mut csum_diff: u64 = unsafe {
+        bpf_csum_diff(
+            (&mut orig_ip_source) as *mut _,
+            4,
+            (&mut new_ip_source) as *mut _,
+            4,
+            0,
+        ) as u64
+    };
+    let a: u32 = csum_diff as u32;
+    info!(&ctx, "{:x} {:x}", csum_diff, a);
+    csum_diff = unsafe {
+        bpf_csum_diff(
+            (&mut orig_ip_destination) as *mut _,
+            4,
+            (&mut new_ip_destination) as *mut _,
+            4,
+            csum_diff as u32,
+        ) as u64
+    };
+    info!(&ctx, "{:x}", csum_diff);
+
+    let mut a: u32 = 0;
+    let mut old_csum = tcp.csum() as u32;
+    let new_csum: u64 = unsafe {
+        bpf_csum_diff(
+            (&mut old_csum) as *mut _,
+            2,
+            (&mut a) as *mut _,
+            2,
+            csum_diff as u32,
+        ) as u64
+    };
+    info!(&ctx, "{:x}", new_csum);
+    // info!(&ctx, "{:x}", csum_fold(new_csum));
+
+    tcp.set_csum(csum_fold_helper(new_csum));
+
+    let csum = tcp.csum();
 
     info!(
         &ctx,
-        "{} csum: 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
+        "{} csum: 0x{:x} -> 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
         msg,
+        old_csum,
         csum,
         *eth.source(),
         ip4.source_u32(),
@@ -125,7 +158,7 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
 fn save_to_pcap(eth: Ethernet, ip4: IPv4, tcp: Tcp, ctx: XdpContext) -> Result<(), ()> {
     if let Some(mut space) = PACKET.reserve::<[u8; 1502]>(0) {
         let ret = unsafe {
-            let size = (eth.size_usize() as u32) + ip4.size() as u32;
+            let size = (eth.size_usize() as u32) + ip4.size() as u32 + tcp.size() as u32;
 
             core::ptr::write_unaligned(
                 space.as_mut_ptr() as *mut [u8; 2],
