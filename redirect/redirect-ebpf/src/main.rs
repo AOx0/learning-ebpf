@@ -17,7 +17,7 @@ use etherparse::{
 };
 
 #[map]
-static PACKET: RingBuf = RingBuf::with_byte_size(100, 0);
+static PACKET: RingBuf = RingBuf::with_byte_size(1024 * 16, 0);
 
 struct Data<'a> {
     ctx: &'a XdpContext,
