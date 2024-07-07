@@ -46,7 +46,20 @@ pub fn csum_fold_helper(mut csum: u64) -> u16 {
             csum = (csum & 0xffff) + (csum >> 16);
         }
     }
-    return !(csum as u16);
+    !(csum as u16)
+}
+
+#[inline(always)]
+pub fn csum_diff<T: Copy>(mut old: T, mut new: T, seed: u32) -> u64 {
+    unsafe {
+        bpf_csum_diff(
+            (&mut old) as *mut T as *mut _,
+            size_of::<T>() as u32,
+            (&mut new) as *mut T as *mut _,
+            size_of::<T>() as u32,
+            seed,
+        ) as u64
+    }
 }
 
 fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
@@ -76,8 +89,8 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    let mut orig_ip_source = ip4.source_u32();
-    let mut orig_ip_destination = ip4.destination_u32();
+    let orig_ip_source = ip4.source_u32();
+    let orig_ip_destination = ip4.destination_u32();
 
     let msg = if ip4.source() == &CLIENT {
         ip4.set_destination(&SERVER);
@@ -89,33 +102,17 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
         "LOAD -> CLIENT"
     };
 
-    let mut new_ip_destination = ip4.destination_u32();
-    let csum_diff = unsafe {
-        bpf_csum_diff(
-            (&mut orig_ip_destination) as *mut _,
-            4,
-            (&mut new_ip_destination) as *mut _,
-            4,
-            !(tcp.csum() as u32),
-        ) as u64
-    };
-    tcp.set_csum(csum_fold_helper(csum_diff));
-
     ip4.set_source(&LOADER);
     eth.set_source(&LOADER_MAC);
     ip4.update_csum();
 
-    let mut new_ip_source = ip4.source_u32();
-    let csum_diff: u64 = unsafe {
-        bpf_csum_diff(
-            (&mut orig_ip_source) as *mut _,
-            4,
-            (&mut new_ip_source) as *mut _,
-            4,
-            !(tcp.csum() as u32),
-        ) as u64
-    };
-    tcp.set_csum(csum_fold_helper(csum_diff));
+    let mut csum = csum_diff(
+        orig_ip_destination,
+        ip4.destination_u32(),
+        !(tcp.csum() as u32),
+    );
+    csum = csum_diff(orig_ip_source, ip4.source_u32(), csum as u32);
+    tcp.set_csum(csum_fold_helper(csum));
 
     let csum = tcp.csum();
 
