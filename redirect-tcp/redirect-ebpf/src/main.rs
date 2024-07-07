@@ -90,59 +90,39 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
     };
 
     let mut new_ip_destination = ip4.destination_u32();
-    let old_csum = !(tcp.csum() as u32);
     let csum_diff = unsafe {
         bpf_csum_diff(
             (&mut orig_ip_destination) as *mut _,
             4,
             (&mut new_ip_destination) as *mut _,
             4,
-            old_csum,
+            !(tcp.csum() as u32),
         ) as u64
     };
     tcp.set_csum(csum_fold_helper(csum_diff));
 
     ip4.set_source(&LOADER);
     eth.set_source(&LOADER_MAC);
-
-    let mut new_ip_source = ip4.source_u32();
     ip4.update_csum();
 
-    let old_csum = !(tcp.csum() as u32);
+    let mut new_ip_source = ip4.source_u32();
     let csum_diff: u64 = unsafe {
         bpf_csum_diff(
             (&mut orig_ip_source) as *mut _,
             4,
             (&mut new_ip_source) as *mut _,
             4,
-            old_csum,
+            !(tcp.csum() as u32),
         ) as u64
     };
-    // let a: u32 = csum_diff as u32;
-    // info!(&ctx, "{:x} {:x}", csum_diff, a)0
-    // info!(&ctx, "{:x}", csum_diff);
-
-    // let new_csum: u64 = unsafe {
-    //     bpf_csum_diff(
-    //         (&mut old_csum) as *mut _,
-    //         2,
-    //         core::ptr::null_mut(),
-    //         0,
-    //         csum_diff as u32,
-    //     ) as u64
-    // };
-    // info!(&ctx, "{:x}", new_csum);
-    // info!(&ctx, "{:x}", csum_fold(new_csum));
-
     tcp.set_csum(csum_fold_helper(csum_diff));
 
     let csum = tcp.csum();
 
     info!(
         &ctx,
-        "{} csum: 0x{:x} -> 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
+        "{} csum: 0x{:x}\n[{:mac}] {:i}:{}\n[{:mac}] {:i}:{}",
         msg,
-        old_csum,
         csum,
         *eth.source(),
         ip4.source_u32(),
