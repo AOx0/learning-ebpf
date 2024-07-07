@@ -11,11 +11,11 @@ This readme contains some notes and learning I had during the process.
 - UDP has a fixed-length header, which makes its parsing simple. 
 - If the bits for the `u16` checksum are zeroed, we can get away with sending the package without making its computation.
 
-## Notes on TCP
-
 ## Notes on Parsing
 
 It would be great to have an alternative to `etherparse` with similar experience but with the ability to parse over a `&mut [u8]` and to modify fields with safe interfaces.
+
+Edit: Created a small crate to solve the issue.
 
 ## Running
 
