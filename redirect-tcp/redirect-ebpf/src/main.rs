@@ -3,14 +3,13 @@
 
 use aya_ebpf::{
     bindings::xdp_action,
-    helpers::bpf_csum_diff,
     macros::{map, xdp},
     maps::RingBuf,
     programs::XdpContext,
 };
 use aya_log_ebpf::info;
 use netp::{
-    aya::XdpErr,
+    aya::{csum_diff, csum_fold_helper, XdpErr},
     bounds,
     eth::{EtherType, Ethernet},
     ipv4::IPv4,
@@ -39,41 +38,14 @@ pub fn hello_wall(ctx: XdpContext) -> u32 {
     }
 }
 
-#[inline(always)]
-pub fn csum_fold_helper(mut csum: u64) -> u16 {
-    for _i in 0..4 {
-        if (csum >> 16) > 0 {
-            csum = (csum & 0xffff) + (csum >> 16);
-        }
-    }
-    !(csum as u16)
-}
-
-#[inline(always)]
-pub fn csum_diff<T: Copy>(mut old: T, mut new: T, seed: u32) -> u64 {
-    unsafe {
-        bpf_csum_diff(
-            (&mut old) as *mut T as *mut _,
-            size_of::<T>() as u32,
-            (&mut new) as *mut T as *mut _,
-            size_of::<T>() as u32,
-            seed,
-        ) as u64
-    }
-}
-
 fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
-    if ctx.data_end() - ctx.data() > MTU {
-        unsafe { core::hint::unreachable_unchecked() }
-    }
-
     let packet = unsafe {
         core::slice::from_raw_parts_mut(ctx.data() as *mut u8, ctx.data_end() - ctx.data())
     };
 
     bounds!(ctx, Ethernet::MIN_LEN).or_drop()?;
     let (mut eth, rem) = Ethernet::new(packet).or_drop()?;
-    if !matches!(eth.ethertype(), EtherType::IPV4) {
+    if !matches!(eth.ethertype(), EtherType::IPv4) {
         return Ok(xdp_action::XDP_PASS);
     }
 
@@ -129,11 +101,12 @@ fn try_hello_wall(ctx: XdpContext) -> Result<u32, u32> {
         tcp.destination(),
     );
 
-    let _ = save_to_pcap(eth, ip4, tcp, ctx);
+    // let _ = save_to_pcap(eth, ip4, tcp, ctx);
 
     Ok(xdp_action::XDP_TX)
 }
 
+#[allow(dead_code)]
 fn save_to_pcap(eth: Ethernet, ip4: IPv4, tcp: Tcp, ctx: XdpContext) -> Result<(), ()> {
     if let Some(mut space) = PACKET.reserve::<[u8; 1502]>(0) {
         let ret = unsafe {
