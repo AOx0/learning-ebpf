@@ -20,7 +20,7 @@ The [`bpf_csum_diff`][2] function according to the docs:
 
 Since I updated the IP source and address, we chain the checksum differences for both changes:
 
-```
+```rs
 let mut csum = csum_diff(
     orig_ip_destination,
     ip4.destination_u32(),
